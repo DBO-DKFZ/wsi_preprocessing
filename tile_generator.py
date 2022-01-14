@@ -27,7 +27,7 @@ class WSIHandler:
             level = self.levels
         none_zoomed_dims = self.slide.level_dimensions[level]
         none_zoomed_img = self.slide.read_region((0,0), level, none_zoomed_dims)
-        image = np.array(none_zoomed_img)[:,:,0:3]
+        image = np.array(none_zoomed_img)
 
         return image
 
@@ -38,10 +38,10 @@ class WSIHandler:
 
 
 if __name__ == "__main__":
-    test_slide = openslide.OpenSlide('D:\\Development\\histopathological_image_preprocessing\\resources\\patient_000_node_0.tif')
+    test_slide = openslide.OpenSlide('D:\\Development\\histopathological_image_preprocessing\\resources\\patient_002_node_0.tif')
 
     slide_handler = WSIHandler()
-    slide_handler.load_slide('D:\\Development\\histopathological_image_preprocessing\\resources\\patient_000_node_0.tif')
+    slide_handler.load_slide('D:\\Development\\histopathological_image_preprocessing\\resources\\patient_002_node_0.tif')
     slide_handler.get_none_zoomed_img(level=4)
     slide_handler.apply_tissue_detection()
 
