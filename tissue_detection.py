@@ -7,53 +7,31 @@ import openslide
 def tissue_detection(img):
 
     kernel_size = 3
-    original_img = copy.deepcopy(img)
 
-    img = img[:,:,0:3]
+    # remove alpha channel
+    img = img[:, :, 0:3]
 
+    # remove black background pixel
     black_px = np.where((img[:, :, 0] <= 5) & (img[:, :, 1] <= 5) & (img[:, :, 2] <= 5))
     img[black_px] = [255, 255, 255]
-    #plt.imshow(img)
-    #plt.show()
 
-    img = cv2.medianBlur(img, 11)
-    #plt.imshow(img)
-    #plt.show()
+    # apply median filter to remove artifacts created by transitions to background pixels
+    median_filtered_img = cv2.medianBlur(img, 11)
 
-    bgr_image = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
-    #plt.imshow(bgr_image)
-    #plt.show()
+    # convert to HSV color space
+    hsv_image = cv2.cvtColor(median_filtered_img, cv2.COLOR_RGB2HSV)
 
-    hsv_image = cv2.cvtColor(bgr_image, cv2.COLOR_BGR2HSV)
-
-    #plt.imshow(hsv_image[:,:,1])
-    #plt.show()
-
-    saturation = hsv_image[:,:,1]
+    # get saturation channel
+    saturation = hsv_image[:, :, 1]
 
     # Otsu's thresholding
-    _, th2 = cv2.threshold(saturation, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+    _, threshold_image = cv2.threshold(saturation, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
 
+    # apply dilation to image to close spots inside mask regions
     kernel = np.ones(shape=(kernel_size, kernel_size))
+    tissue_mask = cv2.dilate(threshold_image, kernel, iterations=1)
+    tissue_mask = cv2.erode(tissue_mask, kernel)
 
-    dilated = cv2.dilate(th2, kernel, iterations=1)
+    print("Mask shape is:", tissue_mask.shape)
 
-    #plt.imshow(th2)
-    #plt.show()
-
-    img_width, img_height = th2.shape
-
-    mask = np.zeros(shape=(img_width, img_height, 3)).astype('uint8')
-    mask[:,:, 1] = dilated
-
-    alpha = 0.8
-    overlay = cv2.addWeighted(mask, alpha, original_img[:,:,0:3], 1-alpha, 0.0)
-    cv2.imwrite("original.png", original_img)
-    cv2.imwrite("test.png", overlay)
-
-    #cv2.imshow("", overlayed_img)
-    #cv2.waitKey()
-
-
-
-
+    return tissue_mask
