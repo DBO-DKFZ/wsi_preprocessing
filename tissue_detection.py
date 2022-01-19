@@ -11,6 +11,11 @@ def tissue_detection(img):
     # remove alpha channel
     img = img[:, :, 0:3]
 
+
+    top_border = int(len(img)/5)
+    # hack for removing border artifacts
+    img[0:top_border, :, :] = [0, 0, 0]
+
     # remove black background pixel
     black_px = np.where((img[:, :, 0] <= 5) & (img[:, :, 1] <= 5) & (img[:, :, 2] <= 5))
     img[black_px] = [255, 255, 255]
@@ -30,8 +35,6 @@ def tissue_detection(img):
     # apply dilation to image to close spots inside mask regions
     kernel = np.ones(shape=(kernel_size, kernel_size))
     tissue_mask = cv2.dilate(threshold_image, kernel, iterations=1)
-    tissue_mask = cv2.erode(tissue_mask, kernel)
-
-    print("Mask shape is:", tissue_mask.shape)
+    #tissue_mask = cv2.erode(tissue_mask, kernel)
 
     return tissue_mask

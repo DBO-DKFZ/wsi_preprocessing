@@ -2,7 +2,11 @@
 .DS_Store
 
 # wsi
-/resources
 .tiff
 .tif
 .png
+
+# pyCharm specific
+__pycache__
+/.idea
+.idea/*

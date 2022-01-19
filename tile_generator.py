@@ -1,6 +1,12 @@
 import cv2
-import openslide
+import os
 
+# Fix to get the dlls to load properly under python >= 3.8 and windows
+script_dir = os.path.dirname(os.path.realpath(__file__))
+openslide_dll_path = os.path.join(script_dir, "..", "openslide-win64-20171122", "bin")
+os.add_dll_directory(openslide_dll_path)
+
+import openslide
 import numpy as np
 import matplotlib.pyplot as plt
 
@@ -86,13 +92,15 @@ class WSIHandler:
                     tissue_mask = cv2.rectangle(colored, (col*tile_size, row*tile_size),
                                                 (col*tile_size+tile_size, row*tile_size + tile_size), (255, 0, 0), 1)
                     tile_nb += 1
+
+        print("Found", tile_nb, "relevant tiles")
         if show:
             plt.imshow(colored)
             plt.show()
 
         return relevant_tiles_dict
 
-    def extract_patch_coordinates(self, tile_dict, min_coverage):
+    def extract_patch_coordinates(self, tile_dict, overlap, min_coverage):
 
         patch_dict = {}
 
@@ -100,9 +108,10 @@ class WSIHandler:
         scaling_factor = int(self.slide.level_downsamples[self.current_level])
         print("Scaling factor is", scaling_factor)
         for tile_key in tile_dict:
+
             tile = self.slide.read_region((tile_dict[tile_key]["x"]*scaling_factor,
                                            tile_dict[tile_key]["y"]*scaling_factor),
-                                          level=1,
+                                          level=0,
                                           size=(tile_dict[tile_key]["size"] * scaling_factor,
                                                 tile_dict[tile_key]["size"] * scaling_factor))
             plt.imshow(tile)
@@ -110,14 +119,13 @@ class WSIHandler:
         return patch_dict
 
 if __name__ == "__main__":
-    test_slide = openslide.OpenSlide('D:\\Development\\histopathological_image_preprocessing\\resources\\patient_002_node_0.tif')
-
-    coverage = 0.5
-    level = 7
+    coverage = 0.75
+    level = 6
+    tile_size = 8
+    overlap = 32
 
     slide_handler = WSIHandler()
-    slide_handler.load_slide('D:\\Development\\histopathological_image_preprocessing\\resources\\patient_002_node_0.tif')
-    #slide_handler.get_img(level=8, show=True)
+    slide_handler.load_slide(os.path.join(script_dir, "resources", "patient_020_node_0.tif"))
     mask, level = slide_handler.apply_tissue_detection(level=level, show=True)
-    tile_dict = slide_handler.get_relevant_tiles(mask, tile_size=4, min_coverage=coverage, level=level, show=True)
-    patch_dict = slide_handler.extract_patch_coordinates(tile_dict, coverage)
+    tile_dict = slide_handler.get_relevant_tiles(mask, tile_size=tile_size, min_coverage=coverage, level=level, show=True)
+    patch_dict = slide_handler.extract_patch_coordinates(tile_dict, overlap, coverage)
