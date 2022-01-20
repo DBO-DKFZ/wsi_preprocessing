@@ -27,7 +27,7 @@ class WSIHandler:
 
         self.total_width = self.slide.dimensions[0]
         self.total_height = self.slide.dimensions[1]
-        self.levels = self.slide.level_count-1
+        self.levels = self.slide.level_count - 1
 
     def get_img(self, level=None, show=False):
         if level is None:
@@ -62,7 +62,7 @@ class WSIHandler:
     @staticmethod
     def extract_patch(image, x_coord, y_coord, width, height):
 
-        patch = image[y_coord:y_coord+height, x_coord:x_coord+width, :]
+        patch = image[y_coord:y_coord + height, x_coord:x_coord + width, :]
 
         return patch
 
@@ -74,23 +74,24 @@ class WSIHandler:
 
         colored = cv2.cvtColor(tissue_mask, cv2.COLOR_GRAY2RGB)
 
-        print("Filtering ", rows*cols, "tiles...")
+        print("Filtering ", rows * cols, "tiles...")
 
         relevant_tiles_dict = {}
         tile_nb = 0
         for row in range(rows):
             for col in range(cols):
 
-                tile = tissue_mask[row*tile_size:row*tile_size+tile_size, col*tile_size:col*tile_size+tile_size]
-                tissue_coverage = np.count_nonzero(tile)/tile.size
+                tile = tissue_mask[row * tile_size:row * tile_size + tile_size,
+                       col * tile_size:col * tile_size + tile_size]
+                tissue_coverage = np.count_nonzero(tile) / tile.size
 
                 if tissue_coverage >= min_coverage:
-
-                    relevant_tiles_dict.update({tile_nb: {"x": col*tile_size, "y": row*tile_size,
+                    relevant_tiles_dict.update({tile_nb: {"x": col * tile_size, "y": row * tile_size,
                                                           "size": tile_size, "level": level}})
 
-                    tissue_mask = cv2.rectangle(colored, (col*tile_size, row*tile_size),
-                                                (col*tile_size+tile_size, row*tile_size + tile_size), (255, 0, 0), 1)
+                    tissue_mask = cv2.rectangle(colored, (col * tile_size, row * tile_size),
+                                                (col * tile_size + tile_size, row * tile_size + tile_size), (255, 0, 0),
+                                                1)
                     tile_nb += 1
 
         print("Found", tile_nb, "relevant tiles")
@@ -100,32 +101,64 @@ class WSIHandler:
 
         return relevant_tiles_dict
 
-    def extract_patch_coordinates(self, tile_dict, overlap, min_coverage):
-
+    def extract_patch_coordinates(self, tile_dict, filter_mask, overlap, min_coverage, patch_size):
+        px_overlap = int(patch_size*overlap)
         patch_dict = {}
 
         # TODO: Check if int casting is valid
         scaling_factor = int(self.slide.level_downsamples[self.current_level])
         print("Scaling factor is", scaling_factor)
+
+
         for tile_key in tile_dict:
 
-            tile = self.slide.read_region((tile_dict[tile_key]["x"]*scaling_factor,
-                                           tile_dict[tile_key]["y"]*scaling_factor),
-                                          level=0,
-                                          size=(tile_dict[tile_key]["size"] * scaling_factor,
-                                                tile_dict[tile_key]["size"] * scaling_factor))
+
+            patch_dict.update({})
+            # TODO: tile as image is not necessary
+            tile_x = tile_dict[tile_key]["x"] * scaling_factor
+            tile_y = tile_dict[tile_key]["y"] * scaling_factor
+            tile_size = tile_dict[tile_key]["size"] * scaling_factor
+            print("Tile size", tile_size)
+            rows = int(np.ceil((tile_size + 2 * overlap) / (patch_size - overlap)))
+            cols = int(np.ceil((tile_size + 2 * overlap) / (patch_size - overlap)))
+
+            tile = np.array(self.slide.read_region((tile_x, tile_y), level=0, size=(tile_size, tile_size)))
+            tile = tile[:, :, 0:3]
+
             plt.imshow(tile)
             plt.show()
+
+            for row in range(rows):
+                for col in range(cols):
+
+                    patch_x = int(col * (patch_size - px_overlap))
+                    patch_y = int(row * (patch_size - px_overlap))
+
+                    if row == rows-1:
+                        patch_y = int(tile_size-patch_size)
+                    if col == cols-1:
+                        patch_x = int(tile_size-patch_size)
+
+                    patch = tile[patch_y:patch_y+patch_size, patch_x:patch_x+patch_size, :]
+
+                    plt.imshow(patch)
+                    plt.title("x:", patch_x, "y:", patch_y)
+                    plt.show()
+
+                    #if not tile
+
         return patch_dict
+
 
 if __name__ == "__main__":
     coverage = 0.75
     level = 6
-    tile_size = 8
-    overlap = 32
+    tile_size = 16
+    overlap = 0.2
 
     slide_handler = WSIHandler()
     slide_handler.load_slide(os.path.join(script_dir, "resources", "patient_020_node_0.tif"))
-    mask, level = slide_handler.apply_tissue_detection(level=level, show=True)
-    tile_dict = slide_handler.get_relevant_tiles(mask, tile_size=tile_size, min_coverage=coverage, level=level, show=True)
-    patch_dict = slide_handler.extract_patch_coordinates(tile_dict, overlap, coverage)
+    mask, level = slide_handler.apply_tissue_detection(level=level, show=False)
+    tile_dict = slide_handler.get_relevant_tiles(mask, tile_size=tile_size, min_coverage=coverage, level=level,
+                                                 show=False)
+    patch_dict = slide_handler.extract_patch_coordinates(tile_dict, mask, overlap, coverage, patch_size=256)
