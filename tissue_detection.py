@@ -2,10 +2,8 @@ import numpy as np
 import matplotlib.pyplot as plt
 import copy
 import cv2
-import openslide
 
-
-def normalizeStaining(img, saveFile=None, Io=240, alpha=1, beta=0.15):
+def extract_stains(img, saveFile=None, Io=240, alpha=1, beta=0.15):
     ''' Normalize staining appearence of H&E stained images
 
     Example use:
@@ -50,9 +48,6 @@ def normalizeStaining(img, saveFile=None, Io=240, alpha=1, beta=0.15):
 
     # remove transparent pixels
     ODhat = OD[~np.any(OD < beta, axis=1)]
-
-    test1 = ODhat.T
-    test2 = np.cov(ODhat.T)
 
     # compute eigenvectors
     eigvals, eigvecs = np.linalg.eigh(np.cov(ODhat.T))
@@ -117,6 +112,7 @@ def tissue_detection(img):
     # remove alpha channel
     img = img[:, :, 0:3]
 
+    print("Removing ")
     top_border = int(len(img)/5)
     # hack for removing border artifacts
     img[0:top_border, :, :] = [0, 0, 0]

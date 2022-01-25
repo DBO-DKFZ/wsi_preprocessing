@@ -2,6 +2,7 @@ import copy
 import tissue_detection
 import cv2
 import os
+import json
 
 import numpy as np
 import matplotlib.pyplot as plt
@@ -12,6 +13,7 @@ script_dir = os.path.dirname(os.path.realpath(__file__))
 try:
     openslide_dll_path = os.path.join(script_dir, "..", "openslide-win64-20171122", "bin")
     os.add_dll_directory(openslide_dll_path)
+    print(openslide_dll_path)
 except Exception as e:
     print(e)
 
@@ -33,6 +35,18 @@ class WSIHandler:
         self.total_width = self.slide.dimensions[0]
         self.total_height = self.slide.dimensions[1]
         self.levels = self.slide.level_count - 1
+
+    def load_annotation(self, annotation_path):
+
+        annotation_dict = {}
+        with open(annotation_path) as annotation_file:
+            annotations = json.load(annotation_file)
+
+        # Only working for features of the type polygon
+        for polygon_nb in range(len(annotations["features"])):
+            annotation_dict.update({polygon_nb:annotations["features"][polygon_nb]["geometry"]["coordinates"][0]})
+
+        return annotation_dict
 
     def get_img(self, level=None, show=False):
         if level is None:
@@ -189,7 +203,7 @@ class WSIHandler:
         img, lvl = self.get_img(6, show=True)
         img = img[:, :, 0:3]
 
-        I, H, E = tissue_detection.normalizeStaining(img)
+        I, H, E = tissue_detection.extract_stains(img)
 
         plt.imshow(H)
         plt.title("H stain")
@@ -207,12 +221,14 @@ if __name__ == "__main__":
     level = 6
     tile_size = 16
     overlap = 0.25
-
+    annotation_path = os.path.join("resources", "annotations", "patient_004_node_4.geojson")
     file_dir = "E:\\camelyon17_generalization"
 
     slide_handler = WSIHandler()
+    print(os.path.join(script_dir, "resources", "patient_020_node_0.tif"))
     slide_handler.load_slide(os.path.join(script_dir, "resources", "patient_020_node_0.tif"))
-    slide_handler.stain_test()
+    slide_handler.load_annotation(annotation_path)
+    #slide_handler.stain_test()
     mask, level = slide_handler.apply_tissue_detection(level=level, show=False)
     tile_dict = slide_handler.get_relevant_tiles(mask, tile_size=tile_size, min_coverage=coverage, level=level,
                                                  show=False)
