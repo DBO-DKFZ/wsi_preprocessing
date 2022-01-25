@@ -4,9 +4,12 @@ import cv2
 import os
 import json
 
+import xml.etree.ElementTree as ET
 import numpy as np
 import matplotlib.pyplot as plt
+
 from PIL import Image
+from xml.dom import minidom
 
 # Fix to get the dlls to load properly under python >= 3.8 and windows
 script_dir = os.path.dirname(os.path.realpath(__file__))
@@ -39,14 +42,55 @@ class WSIHandler:
     def load_annotation(self, annotation_path):
 
         annotation_dict = {}
-        with open(annotation_path) as annotation_file:
-            annotations = json.load(annotation_file)
 
-        # Only working for features of the type polygon
-        for polygon_nb in range(len(annotations["features"])):
-            annotation_dict.update({polygon_nb:annotations["features"][polygon_nb]["geometry"]["coordinates"][0]})
+        if annotation_path.endswith('.geojson'):
+            with open(annotation_path) as annotation_file:
+                annotations = json.load(annotation_file)
+            # Only working for features of the type polygon
+            for polygon_nb in range(len(annotations["features"])):
+                annotation_dict.update({polygon_nb:annotations["features"][polygon_nb]["geometry"]["coordinates"][0]})
+
+        elif annotation_path.endswith('.xml'):
+            tree = ET.parse(annotation_path)
+            root = tree.getroot()
+
+            for elem in root:
+                polygon_nb = 0
+                for subelem in elem:
+                    items = subelem.attrib
+                    if "Type" in items.keys():
+                        if items["Type"] == "Polygon":
+                            annotation_dict.update({polygon_nb:None})
+                            polygon_list = []
+                            for coordinates in subelem:
+                                for coord in coordinates:
+                                    polygon_list.append([float(coord.attrib['X']), float(coord.attrib['Y'])])
+                            annotation_dict[polygon_nb] = polygon_list
+                            polygon_nb += 1
+        else:
+            print("Unknown file format")
+            return None
+
 
         return annotation_dict
+
+    def annotation2mask(self, annotation_dict, mask_level):
+
+        mask_dimension = self.slide.level_dimensions[mask_level]
+        scaling_factor = int(self.slide.level_downsamples[mask_level])
+
+        annotation_mask = np.zeros(shape=(mask_dimension[1], mask_dimension[0]))
+
+        scaled_list = []
+        for polygon in annotation_dict:
+            point_list = np.array([[int(np.round(sublist[0]/scaling_factor)), int(np.round(sublist[1]/scaling_factor))] for sublist in annotation_dict[polygon]],dtype=np.int32)
+            scaled_list.append(point_list)
+
+            cv2.fillPoly(img=annotation_mask, pts=[point_list], color=(1,1,1))
+            plt.imshow(annotation_mask)
+            plt.show()
+
+        return annotation_mask.astype(np.bool)
 
     def get_img(self, level=None, show=False):
         if level is None:
@@ -218,16 +262,16 @@ class WSIHandler:
 
 if __name__ == "__main__":
     coverage = 0.5
-    level = 6
+    level = 7
     tile_size = 16
     overlap = 0.25
-    annotation_path = os.path.join("resources", "annotations", "patient_004_node_4.geojson")
+    annotation_path = os.path.join("resources", "annotations_xml", "patient_004_node_4.xml")
     file_dir = "E:\\camelyon17_generalization"
 
     slide_handler = WSIHandler()
-    print(os.path.join(script_dir, "resources", "patient_020_node_0.tif"))
-    slide_handler.load_slide(os.path.join(script_dir, "resources", "patient_020_node_0.tif"))
-    slide_handler.load_annotation(annotation_path)
+    slide_handler.load_slide(os.path.join(script_dir, "resources", "patient_004_node_4.tif"))
+    annotation_dict = slide_handler.load_annotation(annotation_path)
+    annotation_mask = slide_handler.annotation2mask(annotation_dict, level)
     #slide_handler.stain_test()
     mask, level = slide_handler.apply_tissue_detection(level=level, show=False)
     tile_dict = slide_handler.get_relevant_tiles(mask, tile_size=tile_size, min_coverage=coverage, level=level,
