@@ -132,8 +132,6 @@ class WSIHandler:
 
         colored = cv2.cvtColor(tissue_mask, cv2.COLOR_GRAY2RGB)
 
-        print("Filtering ", rows * cols, "tiles...")
-
         relevant_tiles_dict = {}
         tile_nb = 0
         for row in range(rows):
@@ -152,7 +150,6 @@ class WSIHandler:
                                                 1)
                     tile_nb += 1
 
-        print("Found", tile_nb, "relevant tiles")
         if show:
             plt.imshow(colored)
             plt.show()
@@ -193,7 +190,7 @@ class WSIHandler:
         return None
 
     def extract_patches(self, tile_dict, level, annotations, label_dict, overlap=0, patch_size=256,
-                        file_dir=None):
+                        file_dir=None, slide_name=None):
         # TODO: Only working with binary labels right now
         px_overlap = int(patch_size * overlap)
         patch_dict = {}
@@ -253,15 +250,20 @@ class WSIHandler:
                         label = self.check_for_label(label_dict, patch_mask)
 
                         if label is not None:
+
                             patch_dict[tile_nb]["patches"].update(
-                                {patch_nb: {"x_pos": patch_x, "y_pos": patch_y, "patch_size": patch_size, "label": label}})
+                                {patch_nb: {"x_pos": patch_x, "y_pos": patch_y, "patch_size": patch_size,
+                                            "label": label, "slide_name":slide_name}})
 
                             if file_dir is not None:
                                 file_path = os.path.join(file_dir, label)
                                 if not os.path.exists(file_path):
                                     os.makedirs(file_path)
 
-                                file_name = str(tile_nb) + "_" + str(patch_nb) + ".png"
+                                if slide_name is not None:
+                                    file_name = slide_name+"_"+str(tile_nb) + "_" + str(patch_nb) + ".png"
+                                else:
+                                    file_name = str(tile_nb) + "_" + str(patch_nb) + ".png"
                                 patch = Image.fromarray(patch)
                                 patch.save(os.path.join(file_path, file_name), format="png")
 
@@ -324,7 +326,8 @@ class WSIHandler:
                                                            self.config["label_dict"],
                                                            file_dir=self.config["output_path"],
                                                            overlap=self.config["overlap"],
-                                                           patch_size=self.config["patch_size"])
+                                                           patch_size=self.config["patch_size"],
+                                                           slide_name=slide_name)
 
                 self.save_patch_configuration(patch_dict, slide_name)
 
