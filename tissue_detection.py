@@ -112,7 +112,6 @@ def tissue_detection(img):
     # remove alpha channel
     img = img[:, :, 0:3]
 
-    print("Removing ")
     top_border = int(len(img)/5)
     # hack for removing border artifacts
     img[0:top_border, :, :] = [0, 0, 0]
