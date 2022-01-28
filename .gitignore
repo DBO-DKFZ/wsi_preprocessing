@@ -9,5 +9,3 @@
 # pyCharm specific
 __pycache__
 .idea/*
-
-resources/*
