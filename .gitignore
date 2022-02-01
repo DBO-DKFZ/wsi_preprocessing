@@ -5,7 +5,10 @@
 .tiff
 .tif
 .png
+*.tif
+
+resources/annotations_xml/
 
 # pyCharm specific
-__pycache__
+__pycache__/*
 .idea/*

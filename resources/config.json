@@ -1,0 +1,23 @@
+{
+  "tissue_coverage": 0.8,
+  "processing_level": 5,
+  "tile_size": 16,
+  "overlap": 0.25,
+  "patch_size": 256,
+  "slides_dir": "E:\\camelyon17\\center_0",
+  "annotation_dir": "E:\\camelyon17\\annotations_xml",
+  "annotation_file_format": "xml",
+  "output_path": "E:\\camelyon17_generalization",
+  "skip_unlabeled_slides": true,
+  "show_mode": false,
+  "label_dict": {
+    "non_tumor": {
+      "type": "==",
+      "threshold": 0
+    },
+    "tumor": {
+      "type": ">=",
+      "threshold": 0.5
+    }
+  }
+}
