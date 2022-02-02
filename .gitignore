@@ -12,3 +12,6 @@ resources/annotations_xml/
 # pyCharm specific
 __pycache__/*
 .idea/*
+
+# VSCode
+.vscode

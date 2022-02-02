@@ -12,14 +12,14 @@ import matplotlib.pyplot as plt
 
 from PIL import Image
 
-# Fix to get the dlls to load properly under python >= 3.8 and windows
-script_dir = os.path.dirname(os.path.realpath(__file__))
-try:
-    openslide_dll_path = os.path.join(script_dir, "..", "openslide-win64-20171122", "bin")
-    os.add_dll_directory(openslide_dll_path)
-    # print(openslide_dll_path)
-except Exception as e:
-    pass
+# # Fix to get the dlls to load properly under python >= 3.8 and windows
+# script_dir = os.path.dirname(os.path.realpath(__file__))
+# try:
+#     openslide_dll_path = os.path.join(script_dir, "..", "openslide-win64-20171122", "bin")
+#     os.add_dll_directory(openslide_dll_path)
+#     # print(openslide_dll_path)
+# except Exception as e:
+#     pass
 
 import openslide
 
@@ -91,7 +91,7 @@ class WSIHandler:
         if not os.path.exists(file_path):
             os.makedirs(file_path)
 
-        file = file_path + "\\" + slide_name + ".json"
+        file = os.path.join(file_path, slide_name + ".json")
 
         with open(file, "w") as json_file:
             json.dump(patch_dict, json_file)
@@ -278,7 +278,8 @@ class WSIHandler:
 
     def process_slide(self, slide):
 
-        slide_name = os.path.splitext(slide)[0]
+        slide_name = os.path.basename(slide)
+        slide_name = os.path.splitext(slide_name)[0]
         if not (slide_name in self.annotation_list) and self.config["skip_unlabeled_slides"]:
             print("Skipping slide", slide_name, "- No annotation found")
         else:
@@ -311,8 +312,20 @@ class WSIHandler:
 
             print("Finished Slide", slide)
 
+
+    def parse_slide_files(self, slides_dir):
+        slide_list = []
+
+        for subdir, dirs, files in os.walk(slides_dir):
+            for file in files:
+                slide_list.append(os.path.join(subdir, file))
+
+        slide_list = sorted(slide_list)
+        return slide_list
+
+
     def slides2patches(self):
-        slide_list = os.listdir(self.config["slides_dir"])
+        slide_list = self.parse_slide_files(self.config["slides_dir"])
         annotation_list = os.listdir(self.config["annotation_dir"])
         self.annotation_list = [os.path.splitext(annotation)[0] for annotation in annotation_list]
         pool = multiprocessing.Pool()

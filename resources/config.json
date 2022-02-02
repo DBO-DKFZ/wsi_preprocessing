@@ -4,12 +4,12 @@
   "tile_size": 16,
   "overlap": 0.25,
   "patch_size": 256,
-  "slides_dir": "C:\\Development\\wsi_preprocessing\\resources\\test_slide",
-  "annotation_dir": "C:\\Development\\wsi_preprocessing\\resources\\annotations_json",
-  "annotation_file_format": "json",
-  "output_path": "C:\\Development\\wsi_preprocessing\\resources\\test_out",
+  "slides_dir": "/home/kti03/Data/CAMELYON/CAMELYON17/training/slides",
+  "annotation_dir": "/home/kti03/Data/CAMELYON/CAMELYON17/training/annotations_xml",
+  "annotation_file_format": "xml",
+  "output_path": "/home/kti03/Data/CAMELYON/CAMELYON17/training/tiles",
   "skip_unlabeled_slides": true,
-  "output_format":"jpeg",
+  "output_format":"png",
   "show_mode": false,
   "label_dict": {
     "non_tumor": {
