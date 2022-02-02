@@ -17,11 +17,12 @@ script_dir = os.path.dirname(os.path.realpath(__file__))
 try:
     openslide_dll_path = os.path.join(script_dir, "..", "openslide-win64-20171122", "bin")
     os.add_dll_directory(openslide_dll_path)
-    #print(openslide_dll_path)
+    # print(openslide_dll_path)
 except Exception as e:
     pass
 
 import openslide
+
 
 class WSIHandler:
 
@@ -90,7 +91,7 @@ class WSIHandler:
         if not os.path.exists(file_path):
             os.makedirs(file_path)
 
-        file = file_path+"\\"+slide_name+".json"
+        file = file_path + "\\" + slide_name + ".json"
 
         with open(file, "w") as json_file:
             json.dump(patch_dict, json_file)
@@ -251,7 +252,7 @@ class WSIHandler:
 
                         patch_dict[tile_nb]["patches"].update(
                             {patch_nb: {"x_pos": patch_x, "y_pos": patch_y, "patch_size": patch_size,
-                                        "label": label, "slide_name":slide_name}})
+                                        "label": label, "slide_name": slide_name}})
 
                         if file_dir is not None:
                             file_path = os.path.join(file_dir, label)
@@ -259,7 +260,7 @@ class WSIHandler:
                                 os.makedirs(file_path)
 
                             if slide_name is not None:
-                                file_name = slide_name+"_"+str(tile_nb) + "_" + str(patch_nb) + ".png"
+                                file_name = slide_name + "_" + str(tile_nb) + "_" + str(patch_nb) + ".png"
                             else:
                                 file_name = str(tile_nb) + "_" + str(patch_nb) + ".png"
                             patch = Image.fromarray(patch)
@@ -281,7 +282,7 @@ class WSIHandler:
         if not (slide_name in self.annotation_list) and self.config["skip_unlabeled_slides"]:
             print("Skipping slide", slide_name, "- No annotation found")
         else:
-            print("Found annotation for slide", slide_name, "process id is",os.getpid())
+            print("Found annotation for slide", slide_name, "process id is", os.getpid())
 
             annotation_path = os.path.join(self.config["annotation_dir"],
                                            slide_name + "." + self.config["annotation_file_format"])
@@ -289,21 +290,21 @@ class WSIHandler:
             slide_path = os.path.join(self.config["slides_dir"], slide)
             self.load_slide(slide_path)
             mask, level = self.apply_tissue_detection(level=self.config["processing_level"],
-                                                               show=self.config["show_mode"])
+                                                      show=self.config["show_mode"])
 
             tile_dict = self.get_relevant_tiles(mask, tile_size=self.config["tile_size"],
-                                                                     min_coverage=self.config["tissue_coverage"],
-                                                                     level=level,
-                                                                     show=self.config["show_mode"])
+                                                min_coverage=self.config["tissue_coverage"],
+                                                level=level,
+                                                show=self.config["show_mode"])
 
             patch_dict = self.extract_patches(tile_dict,
-                                                       level,
-                                                       annotation_dict,
-                                                       self.config["label_dict"],
-                                                       file_dir=self.config["output_path"],
-                                                       overlap=self.config["overlap"],
-                                                       patch_size=self.config["patch_size"],
-                                                       slide_name=slide_name)
+                                              level,
+                                              annotation_dict,
+                                              self.config["label_dict"],
+                                              file_dir=self.config["output_path"],
+                                              overlap=self.config["overlap"],
+                                              patch_size=self.config["patch_size"],
+                                              slide_name=slide_name)
 
             self.save_patch_configuration(patch_dict, slide_name)
 
