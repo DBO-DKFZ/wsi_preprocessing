@@ -1,0 +1,5 @@
+matplotlib==3.5.1
+numpy==1.22.1
+opencv_python==4.5.5.62
+openslide_python==1.1.2
+Pillow==9.0.0
