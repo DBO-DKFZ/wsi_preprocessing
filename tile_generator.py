@@ -190,7 +190,7 @@ class WSIHandler:
         return None
 
     def extract_patches(self, tile_dict, level, annotations, label_dict, overlap=0, patch_size=256,
-                        file_dir=None, slide_name=None):
+                        file_dir=None, slide_name=None, output_format="png"):
         # TODO: Only working with binary labels right now
         px_overlap = int(patch_size * overlap)
         patch_dict = {}
@@ -260,11 +260,11 @@ class WSIHandler:
                                 os.makedirs(file_path)
 
                             if slide_name is not None:
-                                file_name = slide_name + "_" + str(tile_nb) + "_" + str(patch_nb) + ".png"
+                                file_name = slide_name + "_" + str(tile_nb) + "_" + str(patch_nb) + "."+output_format
                             else:
-                                file_name = str(tile_nb) + "_" + str(patch_nb) + ".png"
+                                file_name = str(tile_nb) + "_" + str(patch_nb) + + "."+output_format
                             patch = Image.fromarray(patch)
-                            patch.save(os.path.join(file_path, file_name), format="png")
+                            patch.save(os.path.join(file_path, file_name), format=output_format)
 
                         patch_nb += 1
                     if stop_x:
@@ -304,7 +304,8 @@ class WSIHandler:
                                               file_dir=self.config["output_path"],
                                               overlap=self.config["overlap"],
                                               patch_size=self.config["patch_size"],
-                                              slide_name=slide_name)
+                                              slide_name=slide_name,
+                                              output_format=self.config["output_format"])
 
             self.save_patch_configuration(patch_dict, slide_name)
 
