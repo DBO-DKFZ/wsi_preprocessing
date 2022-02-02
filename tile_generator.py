@@ -8,6 +8,7 @@ from pathlib import Path
 import xml.etree.ElementTree as ET
 import json
 import multiprocessing
+from tqdm import tqdm
 
 # Numpy
 import numpy as np
@@ -83,22 +84,6 @@ class WSIHandler:
             return None
 
         return annotation_dict
-
-    def save_patch_configuration(self, patch_dict, slide_name=None):
-
-        file = os.path.join(self.output_path, slide_name + ".json")
-
-        with open(file, "w") as json_file:
-            json.dump(patch_dict, json_file, indent=4)
-
-    def save_thumbnail(self, patch_size=256, slide_name=None, output_format="png"):
-
-        resolution = [dim // patch_size for dim in self.slide.level_dimensions[0]]
-        slide_thumbnail = np.array(self.slide.get_thumbnail(resolution))
-
-        file_name = os.path.join(self.output_path, slide_name + "_thumbnail")
-
-        plt.imsave(file_name, slide_thumbnail, format=output_format)
 
     def get_img(self, level=None, show=False):
         if level is None:
@@ -197,7 +182,7 @@ class WSIHandler:
         slide_path = os.path.join(output_path, slide_name)
         if not os.path.exists(slide_path):
             os.makedirs(slide_path)
-        for label in label_dict.keys():
+        for label in label_dict:
             sub_path = os.path.join(slide_path, label)
             if not os.path.exists(sub_path):
                 os.makedirs(sub_path)
@@ -274,7 +259,7 @@ class WSIHandler:
                             file_name = str(tile_nb) + "_" + str(patch_nb) + + "."+output_format
                         
                         patch = Image.fromarray(patch)
-                        patch.save(os.path.join(self.output_path, file_name), format=output_format)
+                        patch.save(os.path.join(self.output_path, label, file_name), format=output_format)
 
                         patch_nb += 1
                     if stop_x:
@@ -285,6 +270,22 @@ class WSIHandler:
             tile_nb += 1
 
         return patch_dict
+
+    def save_patch_configuration(self, patch_dict, slide_name=None):
+
+        file = os.path.join(self.output_path, slide_name + ".json")
+
+        with open(file, "w") as json_file:
+            json.dump(patch_dict, json_file, indent=4)
+
+    def save_thumbnail(self, patch_size=256, slide_name=None, output_format="png"):
+
+        resolution = [dim // patch_size for dim in self.slide.level_dimensions[0]]
+        slide_thumbnail = np.array(self.slide.get_thumbnail(resolution))
+
+        file_name = os.path.join(self.output_path, slide_name + "_thumbnail." + output_format)
+
+        plt.imsave(file_name, slide_thumbnail, format=output_format)
 
     def process_slide(self, slide):
 
@@ -310,7 +311,7 @@ class WSIHandler:
 
             self.make_dirs(output_path=self.config["output_path"],
                            slide_name=slide_name,
-                           label_dict=annotation_dict)
+                           label_dict=self.config["label_dict"])
 
             patch_dict = self.extract_patches(tile_dict,
                                               level,
@@ -326,7 +327,6 @@ class WSIHandler:
             self.save_thumbnail(patch_size=self.config["patch_size"],
                                 slide_name=slide_name,
                                 output_format=self.config["output_format"])
-            
             print("Finished Slide", slide)
 
     def slides2patches(self):
@@ -334,6 +334,7 @@ class WSIHandler:
         annotation_list = os.listdir(self.config["annotation_dir"])
         self.annotation_list = [os.path.splitext(annotation)[0] for annotation in annotation_list]
         pool = multiprocessing.Pool()
+        pbar = tqdm(total=len(slide_list))
         pool.map(self.process_slide, slide_list)
 
 
