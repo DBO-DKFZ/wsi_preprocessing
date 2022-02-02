@@ -1,4 +1,3 @@
-import copy
 import tissue_detection
 import cv2
 import os
@@ -156,22 +155,6 @@ class WSIHandler:
 
         return relevant_tiles_dict
 
-    def filter_tile(self, tile, kernel_size=3):
-
-        # convert to HSV color space
-        gray = cv2.cvtColor(tile, cv2.COLOR_RGB2GRAY)
-
-        # Otsu's thresholding
-        _, threshold_image = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
-
-        kernel = np.ones(shape=(kernel_size, kernel_size))
-        tissue_mask = cv2.dilate(threshold_image, kernel, iterations=1)
-
-        plt.imshow(tissue_mask)
-        plt.show()
-
-        return tissue_mask
-
     def check_for_label(self, label_dict, annotation_mask):
 
         label_percentage = np.count_nonzero(annotation_mask) / annotation_mask.size
@@ -322,3 +305,4 @@ class WSIHandler:
 if __name__ == "__main__":
     slide_handler = WSIHandler()
     slide_handler.slides2patches()
+us
