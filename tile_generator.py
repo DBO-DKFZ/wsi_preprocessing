@@ -63,15 +63,16 @@ class WSIHandler:
     def load_annotation(self, annotation_path):
 
         annotation_dict = {}
+        file_format = Path(annotation_path).suffix
 
-        if annotation_path.endswith('.geojson'):
+        if file_format == '.geojson':
             with open(annotation_path) as annotation_file:
                 annotations = json.load(annotation_file)
             # Only working for features of the type polygon
             for polygon_nb in range(len(annotations["features"])):
                 annotation_dict.update({polygon_nb: annotations["features"][polygon_nb]["geometry"]["coordinates"][0]})
 
-        elif annotation_path.endswith('.xml'):
+        elif file_format == '.xml':
             tree = ET.parse(annotation_path)
             root = tree.getroot()
 
@@ -189,15 +190,14 @@ class WSIHandler:
 
         # TODO: Check if int casting is valid
         scaling_factor = int(self.slide.level_downsamples[level])
-        total_tiles = len(tile_dict)
-        tile_nb = 0
+        patch_nb = 0
 
         for tile_key in tile_dict:
             tile_x = tile_dict[tile_key]["x"] * scaling_factor
             tile_y = tile_dict[tile_key]["y"] * scaling_factor
             tile_size = tile_dict[tile_key]["size"] * scaling_factor
 
-            patch_dict.update({tile_nb: {"x_pos": tile_x, "y_pos": tile_y, "size": tile_size, "patches": {}}})
+            #patch_dict.update({tile_nb: {"x_pos": tile_x, "y_pos": tile_y, "size": tile_size, "patches": {}}})
 
             # ToDo: rows and cols arent calculated correctly, instead a quick fix by using breaks was applied
             rows = int(np.ceil((tile_size + overlap) / (patch_size - px_overlap)))
@@ -235,6 +235,9 @@ class WSIHandler:
                         stop_x = True
                         patch_x = tile_size - patch_size
 
+                    global_x = patch_x + tile_x
+                    global_y = patch_y + tile_y
+
                     patch = tile[patch_y:patch_y + patch_size, patch_x:patch_x + patch_size, :]
                     patch_mask = tile_annotation_mask[patch_y:patch_y + patch_size, patch_x:patch_x + patch_size]
 
@@ -242,14 +245,13 @@ class WSIHandler:
 
                     if label is not None:
 
-                        patch_dict[tile_nb]["patches"].update(
-                            {patch_nb: {"x_pos": patch_x, "y_pos": patch_y, "patch_size": patch_size,
+                        patch_dict.update({patch_nb:{"x_pos": patch_x, "y_pos": patch_y, "patch_size": patch_size,
                                         "label": label, "slide_name": slide_name}})
 
                         if slide_name is not None:
-                            file_name = slide_name + "_" + str(tile_nb) + "_" + str(patch_nb) + "."+output_format
+                            file_name = slide_name + "_" + str(global_x) + "_" + str(global_y) + "." + output_format
                         else:
-                            file_name = str(tile_nb) + "_" + str(patch_nb) + + "."+output_format
+                            file_name = str(patch_nb) + "_" + str(global_x) + "_" + str(global_y) + "." + output_format
                         
                         patch = Image.fromarray(patch)
                         patch.save(os.path.join(self.output_path, label, file_name), format=output_format)
@@ -260,7 +262,7 @@ class WSIHandler:
                 if stop_y:
                     break
 
-            tile_nb += 1
+
 
         return patch_dict
 
@@ -282,55 +284,66 @@ class WSIHandler:
         plt.imsave(file_name, slide_thumbnail, format=output_format)
 
     def process_slide(self, slide):
-
         slide_name = os.path.basename(slide)
         slide_name = os.path.splitext(slide_name)[0]
-        if not (slide_name in self.annotation_list) and self.config["skip_unlabeled_slides"]:
-            print("Skipping slide", slide_name, "- No annotation found")
-        else:
-            print("Found annotation for slide", slide_name, "process id is", os.getpid())
 
-            annotation_path = os.path.join(self.config["annotation_dir"],
-                                           slide_name + "." + self.config["annotation_file_format"])
-            annotation_dict = self.load_annotation(annotation_path)
-            slide_path = os.path.join(self.config["slides_dir"], slide)
-            self.load_slide(slide_path)
-            mask, level = self.apply_tissue_detection(level=self.config["processing_level"],
-                                                      show=self.config["show_mode"])
+        annotation_path = os.path.join(self.config["annotation_dir"],
+                                       slide_name + "." + self.config["annotation_file_format"])
+        annotation_dict = self.load_annotation(annotation_path)
+        slide_path = os.path.join(self.config["slides_dir"], slide)
+        self.load_slide(slide_path)
+        mask, level = self.apply_tissue_detection(level=self.config["processing_level"],
+                                                  show=self.config["show_mode"])
 
-            tile_dict = self.get_relevant_tiles(mask, tile_size=self.config["tile_size"],
-                                                min_coverage=self.config["tissue_coverage"],
-                                                level=level,
-                                                show=self.config["show_mode"])
+        tile_dict = self.get_relevant_tiles(mask, tile_size=self.config["tile_size"],
+                                            min_coverage=self.config["tissue_coverage"],
+                                            level=level,
+                                            show=self.config["show_mode"])
 
-            self.make_dirs(output_path=self.config["output_path"],
-                           slide_name=slide_name,
-                           label_dict=self.config["label_dict"])
+        self.make_dirs(output_path=self.config["output_path"],
+                       slide_name=slide_name,
+                       label_dict=self.config["label_dict"])
 
-            patch_dict = self.extract_patches(tile_dict,
-                                              level,
-                                              annotation_dict,
-                                              self.config["label_dict"],
-                                              overlap=self.config["overlap"],
-                                              patch_size=self.config["patch_size"],
-                                              slide_name=slide_name,
-                                              output_format=self.config["output_format"])
+        patch_dict = self.extract_patches(tile_dict,
+                                          level,
+                                          annotation_dict,
+                                          self.config["label_dict"],
+                                          overlap=self.config["overlap"],
+                                          patch_size=self.config["patch_size"],
+                                          slide_name=slide_name,
+                                          output_format=self.config["output_format"])
 
-            self.save_patch_configuration(patch_dict, slide_name=slide_name)
+        self.save_patch_configuration(patch_dict, slide_name=slide_name)
 
-            self.save_thumbnail(patch_size=self.config["patch_size"],
-                                slide_name=slide_name,
-                                output_format=self.config["output_format"])
-            print("Finished Slide", slide)
+        self.save_thumbnail(patch_size=self.config["patch_size"],
+                            slide_name=slide_name,
+                            output_format=self.config["output_format"])
+        print("Finished Slide", slide)
 
     def slides2patches(self):
         slide_list = sorted([f for f in Path(self.config["slides_dir"]).resolve().glob('**/*.tif')])
         annotation_list = os.listdir(self.config["annotation_dir"])
         self.annotation_list = [os.path.splitext(annotation)[0] for annotation in annotation_list]
+
+        missing_annotations = []
+        annotated_slides = [name if os.path.splitext(os.path.basename(name))[0] in self.annotation_list
+                            else missing_annotations.append(os.path.splitext(os.path.basename(name))[0]) for name in slide_list]
+        annotated_slides = list(filter(None.__ne__, annotated_slides))
+
+        print("###############################################")
+        print("Found", len(annotated_slides), "annotated slides")
+        print("###############################################")
+        print("Found", len(missing_annotations), "unannotated slides")
+        print("###############################################")
+
+        if self.config["skip_unlabeled_slides"]:
+            slide_list = annotated_slides
+            print("Processing annotated slides only")
+
         pool = multiprocessing.Pool()
-        # TODO: Get progress bar working
-        pbar = tqdm(total=len(slide_list))
-        pool.map(self.process_slide, slide_list)
+
+        for _ in tqdm(pool.imap_unordered(self.process_slide, slide_list), total=len(slide_list)):
+            pass
 
 
 if __name__ == "__main__":
