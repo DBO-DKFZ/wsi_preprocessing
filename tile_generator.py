@@ -1,32 +1,42 @@
-import tissue_detection
-import cv2
+# System
 import os
-import json
 import sys
-import multiprocessing
+from pathlib import Path
 
+# Advanced
 import xml.etree.ElementTree as ET
+import json
+import multiprocessing
+from tqdm import tqdm
+
+# Numpy
 import numpy as np
 import matplotlib.pyplot as plt
 
+# Image Processing
 from PIL import Image
+import cv2
 
-# Fix to get the dlls to load properly under python >= 3.8 and windows
-script_dir = os.path.dirname(os.path.realpath(__file__))
-try:
-    openslide_dll_path = os.path.join(script_dir, "..", "openslide-win64-20171122", "bin")
-    os.add_dll_directory(openslide_dll_path)
-    # print(openslide_dll_path)
-except Exception as e:
-    pass
+# # Fix to get the dlls to load properly under python >= 3.8 and windows
+# script_dir = os.path.dirname(os.path.realpath(__file__))
+# try:
+#     openslide_dll_path = os.path.join(script_dir, "..", "openslide-win64-20171122", "bin")
+#     os.add_dll_directory(openslide_dll_path)
+#     # print(openslide_dll_path)
+# except Exception as e:
+#     pass
 
 import openslide
+
+# Custom
+import tissue_detection
 
 
 class WSIHandler:
 
     def __init__(self, config_path='resources/config.json'):
         self.slide = None
+        self.output_path = None
         self.total_width = 0
         self.total_height = 0
         self.levels = 0
@@ -83,17 +93,6 @@ class WSIHandler:
             return None
 
         return annotation_dict
-
-    def save_patch_configuration(self, patch_dict, slide_name):
-
-        file_path = os.path.join(self.config["output_path"], "meta_data")
-        if not os.path.exists(file_path):
-            os.makedirs(file_path)
-
-        file = file_path + "\\" + slide_name + ".json"
-
-        with open(file, "w") as json_file:
-            json.dump(patch_dict, json_file)
 
     def get_img(self, level=None, show=False):
         if level is None:
@@ -172,8 +171,18 @@ class WSIHandler:
 
         return None
 
+    def make_dirs(self, output_path, slide_name, label_dict):
+        slide_path = os.path.join(output_path, slide_name)
+        if not os.path.exists(slide_path):
+            os.makedirs(slide_path)
+        for label in label_dict:
+            sub_path = os.path.join(slide_path, label)
+            if not os.path.exists(sub_path):
+                os.makedirs(sub_path)
+        self.output_path = slide_path
+
     def extract_patches(self, tile_dict, level, annotations, label_dict, overlap=0, patch_size=256,
-                        file_dir=None, slide_name=None, output_format="png"):
+                        slide_name=None, output_format="png"):
         # TODO: Only working with binary labels right now
         px_overlap = int(patch_size * overlap)
         patch_dict = {}
@@ -237,17 +246,13 @@ class WSIHandler:
                             {patch_nb: {"x_pos": patch_x, "y_pos": patch_y, "patch_size": patch_size,
                                         "label": label, "slide_name": slide_name}})
 
-                        if file_dir is not None:
-                            file_path = os.path.join(file_dir, label)
-                            if not os.path.exists(file_path):
-                                os.makedirs(file_path)
-
-                            if slide_name is not None:
-                                file_name = slide_name + "_" + str(tile_nb) + "_" + str(patch_nb) + "."+output_format
-                            else:
-                                file_name = str(tile_nb) + "_" + str(patch_nb) + + "."+output_format
-                            patch = Image.fromarray(patch)
-                            patch.save(os.path.join(file_path, file_name), format=output_format)
+                        if slide_name is not None:
+                            file_name = slide_name + "_" + str(tile_nb) + "_" + str(patch_nb) + "."+output_format
+                        else:
+                            file_name = str(tile_nb) + "_" + str(patch_nb) + + "."+output_format
+                        
+                        patch = Image.fromarray(patch)
+                        patch.save(os.path.join(self.output_path, label, file_name), format=output_format)
 
                         patch_nb += 1
                     if stop_x:
@@ -259,9 +264,27 @@ class WSIHandler:
 
         return patch_dict
 
+    def save_patch_configuration(self, patch_dict, slide_name=None):
+
+        file = os.path.join(self.output_path, "tile_information.json")
+
+        with open(file, "w") as json_file:
+            json.dump(patch_dict, json_file, indent=4)
+
+    def save_thumbnail(self, patch_size=256, slide_name=None, output_format="png"):
+
+        # resolution = [dim // patch_size for dim in self.slide.level_dimensions[0]]
+        resolution = self.slide.level_dimensions[5]
+        slide_thumbnail = np.array(self.slide.get_thumbnail(resolution))
+
+        file_name = os.path.join(self.output_path, "thumbnail." + output_format)
+
+        plt.imsave(file_name, slide_thumbnail, format=output_format)
+
     def process_slide(self, slide):
 
-        slide_name = os.path.splitext(slide)[0]
+        slide_name = os.path.basename(slide)
+        slide_name = os.path.splitext(slide_name)[0]
         if not (slide_name in self.annotation_list) and self.config["skip_unlabeled_slides"]:
             print("Skipping slide", slide_name, "- No annotation found")
         else:
@@ -280,29 +303,36 @@ class WSIHandler:
                                                 level=level,
                                                 show=self.config["show_mode"])
 
+            self.make_dirs(output_path=self.config["output_path"],
+                           slide_name=slide_name,
+                           label_dict=self.config["label_dict"])
+
             patch_dict = self.extract_patches(tile_dict,
                                               level,
                                               annotation_dict,
                                               self.config["label_dict"],
-                                              file_dir=self.config["output_path"],
                                               overlap=self.config["overlap"],
                                               patch_size=self.config["patch_size"],
                                               slide_name=slide_name,
                                               output_format=self.config["output_format"])
 
-            self.save_patch_configuration(patch_dict, slide_name)
+            self.save_patch_configuration(patch_dict, slide_name=slide_name)
 
+            self.save_thumbnail(patch_size=self.config["patch_size"],
+                                slide_name=slide_name,
+                                output_format=self.config["output_format"])
             print("Finished Slide", slide)
 
     def slides2patches(self):
-        slide_list = os.listdir(self.config["slides_dir"])
+        slide_list = sorted([f for f in Path(self.config["slides_dir"]).resolve().glob('**/*.tif')])
         annotation_list = os.listdir(self.config["annotation_dir"])
         self.annotation_list = [os.path.splitext(annotation)[0] for annotation in annotation_list]
         pool = multiprocessing.Pool()
+        # TODO: Get progress bar working
+        pbar = tqdm(total=len(slide_list))
         pool.map(self.process_slide, slide_list)
 
 
 if __name__ == "__main__":
     slide_handler = WSIHandler()
     slide_handler.slides2patches()
-us
