@@ -216,7 +216,6 @@ class WSIHandler:
             for polygon in tile_annotation_list:
                 cv2.fillPoly(tile_annotation_mask, [np.array(polygon).astype(np.int32)], 1)
 
-            patch_nb = 0
             stop_y = False
 
             for row in range(rows):
@@ -246,7 +245,7 @@ class WSIHandler:
 
                     if label is not None:
 
-                        patch_dict.update({patch_nb:{"x_pos": patch_x, "y_pos": patch_y, "patch_size": patch_size,
+                        patch_dict.update({patch_nb:{"x_pos": global_x, "y_pos": global_y, "patch_size": patch_size,
                                         "label": label, "slide_name": slide_name}})
 
                         if slide_name is not None:
@@ -262,8 +261,6 @@ class WSIHandler:
                         break
                 if stop_y:
                     break
-
-
 
         return patch_dict
 
@@ -319,7 +316,6 @@ class WSIHandler:
         self.save_thumbnail(patch_size=self.config["patch_size"],
                             slide_name=slide_name,
                             output_format=self.config["output_format"])
-        print("Finished Slide", slide)
 
     def slides2patches(self):
         slide_list = sorted([f for f in Path(self.config["slides_dir"]).resolve().glob('**/*.tif')])
