@@ -2,6 +2,7 @@
 import os
 import sys
 from pathlib import Path
+from argparse import ArgumentParser
 
 # Advanced
 import xml.etree.ElementTree as ET
@@ -347,5 +348,9 @@ class WSIHandler:
 
 
 if __name__ == "__main__":
-    slide_handler = WSIHandler()
+    parser = ArgumentParser()
+    parser.add_argument("--config_path", default="resources/config.json")
+    args = parser.parse_args()
+
+    slide_handler = WSIHandler(config_path=args.config_path)
     slide_handler.slides2patches()
