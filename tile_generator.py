@@ -17,6 +17,16 @@ import matplotlib.pyplot as plt
 # Image Processing
 from PIL import Image
 import cv2
+
+# # Fix to get the dlls to load properly under python >= 3.8 and windows
+# script_dir = os.path.dirname(os.path.realpath(__file__))
+# try:
+#     openslide_dll_path = os.path.join(script_dir, "..", "openslide-win64-20171122", "bin")
+#     os.add_dll_directory(openslide_dll_path)
+#     # print(openslide_dll_path)
+# except Exception as e:
+#     pass
+
 import openslide
 
 # Custom
@@ -334,6 +344,7 @@ class WSIHandler:
         annotation_list = os.listdir(self.config["annotation_dir"])
         self.annotation_list = [os.path.splitext(annotation)[0] for annotation in annotation_list]
         pool = multiprocessing.Pool()
+        # TODO: Get progress bar working
         pbar = tqdm(total=len(slide_list))
         pool.map(self.process_slide, slide_list)
 
