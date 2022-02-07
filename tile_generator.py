@@ -124,7 +124,23 @@ class WSIHandler:
 
         return tissue_mask, level
 
-    def get_relevant_tiles(self, tissue_mask, tile_size, min_coverage, level, show=False):
+    def annotation_in_tile(self, tile_x, tile_y, tile_size, annotations):
+
+        tile_annotation_list = [[[point[0] - tile_x, point[1] - tile_y] for point in annotations[polygon]]
+                                for
+                                polygon in annotations]
+
+        tile_annotation_mask = np.zeros(shape=(tile_size, tile_size))
+
+        for polygon in tile_annotation_list:
+            cv2.fillPoly(tile_annotation_mask, [np.array(polygon).astype(np.int32)], 1)
+
+        if np.count_nonzero(tile_annotation_mask) >= 1:
+            return True
+
+        return False
+
+    def get_relevant_tiles(self, tissue_mask, tile_size, min_coverage, level, annotations, show=False):
 
         # TODO: Handling border cases using the residue
         rows, row_residue = divmod(tissue_mask.shape[0], tile_size)
@@ -146,7 +162,8 @@ class WSIHandler:
                                                           "size": tile_size, "level": level}})
 
                     tissue_mask = cv2.rectangle(colored, (col * tile_size, row * tile_size),
-                                                (col * tile_size + tile_size, row * tile_size + tile_size), (255, 0, 0),
+                                                (col * tile_size + tile_size, row * tile_size + tile_size),
+                                                (255, 0, 0),
                                                 1)
                     tile_nb += 1
 
@@ -165,10 +182,10 @@ class WSIHandler:
                 if label_dict[label]["threshold"] == label_percentage:
                     return label
             elif label_dict[label]["type"] == ">=":
-                if label_dict[label]["threshold"] >= label_percentage:
+                if label_percentage >= label_dict[label]["threshold"]:
                     return label
             elif label_dict[label]["type"] == "<=":
-                if label_percentage[label]["threshold"] >= label_percentage:
+                if label_percentage <= label_percentage[label]["threshold"]:
                     return label
 
         return None
@@ -198,8 +215,6 @@ class WSIHandler:
             tile_y = tile_dict[tile_key]["y"] * scaling_factor
             tile_size = tile_dict[tile_key]["size"] * scaling_factor
 
-            #patch_dict.update({tile_nb: {"x_pos": tile_x, "y_pos": tile_y, "size": tile_size, "patches": {}}})
-
             # ToDo: rows and cols arent calculated correctly, instead a quick fix by using breaks was applied
             rows = int(np.ceil((tile_size + overlap) / (patch_size - px_overlap)))
             cols = int(np.ceil((tile_size + overlap) / (patch_size - px_overlap)))
@@ -213,6 +228,7 @@ class WSIHandler:
 
             # Create mask from polygons
             tile_annotation_mask = np.zeros(shape=(tile_size, tile_size))
+
             for polygon in tile_annotation_list:
                 cv2.fillPoly(tile_annotation_mask, [np.array(polygon).astype(np.int32)], 1)
 
@@ -296,6 +312,7 @@ class WSIHandler:
         tile_dict = self.get_relevant_tiles(mask, tile_size=self.config["tile_size"],
                                             min_coverage=self.config["tissue_coverage"],
                                             level=level,
+                                            annotations=annotation_dict,
                                             show=self.config["show_mode"])
 
         self.make_dirs(output_path=self.config["output_path"],
