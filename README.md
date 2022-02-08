@@ -10,6 +10,8 @@ The tissue detection is processed on a higher level to speed up the process. The
 Supported annotation types are .xml (Camelyon17) or .geojson (QuPath)
 Right now only binary annotation types are supported (tumor - non-tumor)
 
+Main file is "tile_generator.py" - Execute this file to start the process
+
 | Dictionary Entry | Explanation |
 | ----------- | ----------- |
 | tissue_coverage | Threshold [0,1] for how much tissue coverage is necessary, default is 0.75|
