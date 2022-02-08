@@ -17,7 +17,7 @@ Main file is "tile_generator.py" - Execute this file to start the process
 | tissue_coverage | Threshold [0,1] for how much tissue coverage is necessary, default is 0.75|
 | processing_level | Level of downsampling by openslide - Lowering the level will increase precision but more time is needed, default is 5| 
 | tile_size |Pixel size of the rough tiles default is 16|
-| overlap | Value [0,1] to set the overlap between neighbouring patches | 
+| overlap | Value [0,1[ to set the overlap between neighbouring patches | 
 | patch_size | Output pixel size of the quadratic patches |
 | slides_dir | Directory where the different slides and subdirs are located  | 
 | annotation_dir | Directory where the annotations are located |

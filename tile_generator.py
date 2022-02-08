@@ -260,17 +260,18 @@ class WSIHandler:
                     label = self.check_for_label(label_dict, patch_mask)
 
                     if label is not None:
-
-                        patch_dict.update({patch_nb:{"x_pos": global_x, "y_pos": global_y, "patch_size": patch_size,
-                                        "label": label, "slide_name": slide_name}})
-
                         if slide_name is not None:
+
                             file_name = slide_name + "_" + str(global_x) + "_" + str(global_y) + "." + output_format
                         else:
                             file_name = str(patch_nb) + "_" + str(global_x) + "_" + str(global_y) + "." + output_format
                         
                         patch = Image.fromarray(patch)
                         patch.save(os.path.join(self.output_path, label, file_name), format=output_format)
+
+                        patch_dict.update({patch_nb: {"x_pos": global_x, "y_pos": global_y, "patch_size": patch_size,
+                                                      "label": label, "slide_name": slide_name,
+                                                      "patch_path": os.path.join(label, file_name)}})
 
                         patch_nb += 1
                     if stop_x:
@@ -280,7 +281,7 @@ class WSIHandler:
 
         return patch_dict
 
-    def save_patch_configuration(self, patch_dict, slide_name=None):
+    def save_patch_configuration(self, patch_dict):
 
         file = os.path.join(self.output_path, "tile_information.json")
 
@@ -328,7 +329,7 @@ class WSIHandler:
                                           slide_name=slide_name,
                                           output_format=self.config["output_format"])
 
-        self.save_patch_configuration(patch_dict, slide_name=slide_name)
+        self.save_patch_configuration(patch_dict)
 
         self.save_thumbnail(patch_size=self.config["patch_size"],
                             slide_name=slide_name,
@@ -355,10 +356,15 @@ class WSIHandler:
             print("Processing annotated slides only")
 
         pool = multiprocessing.Pool()
-
         for _ in tqdm(pool.imap_unordered(self.process_slide, slide_list), total=len(slide_list)):
             pass
 
+        # Save used config file
+        file = os.path.join(self.config["output_path"], "config.json")
+        with open(file, "w") as json_file:
+            json.dump(self.config, json_file, indent=4)
+
+        print("Finished tiling process!")
 
 if __name__ == "__main__":
     parser = ArgumentParser()
