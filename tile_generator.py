@@ -19,13 +19,14 @@ from PIL import Image
 import cv2
 
 # # Fix to get the dlls to load properly under python >= 3.8 and windows
-# script_dir = os.path.dirname(os.path.realpath(__file__))
-# try:
-#     openslide_dll_path = os.path.join(script_dir, "..", "openslide-win64-20171122", "bin")
-#     os.add_dll_directory(openslide_dll_path)
-#     # print(openslide_dll_path)
-# except Exception as e:
-#     pass
+script_dir = os.path.dirname(os.path.realpath(__file__))
+try:
+     openslide_dll_path = os.path.join(script_dir, "..", "openslide-win64-20171122", "bin")
+     os.add_dll_directory(openslide_dll_path)
+     # print(openslide_dll_path)
+
+except Exception as e:
+     pass
 
 import openslide
 
@@ -62,17 +63,18 @@ class WSIHandler:
         self.levels = self.slide.level_count - 1
 
     def load_annotation(self, annotation_path):
-
         annotation_dict = {}
         file_format = Path(annotation_path).suffix
 
-        if file_format == '.geojson':
+        # CuPath exports
+        if file_format == '.geojson' or file_format == '.txt':
             with open(annotation_path) as annotation_file:
                 annotations = json.load(annotation_file)
             # Only working for features of the type polygon
             for polygon_nb in range(len(annotations["features"])):
                 annotation_dict.update({polygon_nb: annotations["features"][polygon_nb]["geometry"]["coordinates"][0]})
 
+        # xml for CAMELYON17
         elif file_format == '.xml':
             tree = ET.parse(annotation_path)
             root = tree.getroot()
@@ -91,7 +93,6 @@ class WSIHandler:
                             annotation_dict[polygon_nb] = polygon_list
                             polygon_nb += 1
         else:
-            print("Unknown file format")
             return None
 
         return annotation_dict
@@ -124,23 +125,7 @@ class WSIHandler:
 
         return tissue_mask, level
 
-    def annotation_in_tile(self, tile_x, tile_y, tile_size, annotations):
-
-        tile_annotation_list = [[[point[0] - tile_x, point[1] - tile_y] for point in annotations[polygon]]
-                                for
-                                polygon in annotations]
-
-        tile_annotation_mask = np.zeros(shape=(tile_size, tile_size))
-
-        for polygon in tile_annotation_list:
-            cv2.fillPoly(tile_annotation_mask, [np.array(polygon).astype(np.int32)], 1)
-
-        if np.count_nonzero(tile_annotation_mask) >= 1:
-            return True
-
-        return False
-
-    def get_relevant_tiles(self, tissue_mask, tile_size, min_coverage, level, annotations, show=False):
+    def get_relevant_tiles(self, tissue_mask, tile_size, min_coverage, level, show=False):
 
         # TODO: Handling border cases using the residue
         rows, row_residue = divmod(tissue_mask.shape[0], tile_size)
@@ -190,14 +175,20 @@ class WSIHandler:
 
         return None
 
-    def make_dirs(self, output_path, slide_name, label_dict):
+    def make_dirs(self, output_path, slide_name, label_dict, annotated):
         slide_path = os.path.join(output_path, slide_name)
-        if not os.path.exists(slide_path):
-            os.makedirs(slide_path)
-        for label in label_dict:
-            sub_path = os.path.join(slide_path, label)
-            if not os.path.exists(sub_path):
-                os.makedirs(sub_path)
+        if not annotated:
+            unlabeled_path = os.path.join(slide_path, "unlabeled")
+            if not os.path.exists(unlabeled_path):
+                os.makedirs(unlabeled_path)
+        else:
+            if not os.path.exists(slide_path):
+                os.makedirs(slide_path)
+            for label in label_dict:
+                sub_path = os.path.join(slide_path, label)
+                if not os.path.exists(sub_path):
+                    os.makedirs(sub_path)
+
         self.output_path = slide_path
 
     def extract_patches(self, tile_dict, level, annotations, label_dict, overlap=0, patch_size=256,
@@ -206,7 +197,6 @@ class WSIHandler:
         px_overlap = int(patch_size * overlap)
         patch_dict = {}
 
-        # TODO: Check if int casting is valid
         scaling_factor = int(self.slide.level_downsamples[level])
         patch_nb = 0
 
@@ -222,15 +212,16 @@ class WSIHandler:
             tile = np.array(self.slide.read_region((tile_x, tile_y), level=0, size=(tile_size, tile_size)))
             tile = tile[:, :, 0:3]
 
-            # Translate from world coordinates to tile coordinates
-            tile_annotation_list = [[[point[0] - tile_x, point[1] - tile_y] for point in annotations[polygon]] for
-                                    polygon in annotations]
+            if annotations is not None:
+                # Translate from world coordinates to tile coordinates
+                tile_annotation_list = [[[point[0] - tile_x, point[1] - tile_y] for point in annotations[polygon]] for
+                                        polygon in annotations]
 
-            # Create mask from polygons
-            tile_annotation_mask = np.zeros(shape=(tile_size, tile_size))
+                # Create mask from polygons
+                tile_annotation_mask = np.zeros(shape=(tile_size, tile_size))
 
-            for polygon in tile_annotation_list:
-                cv2.fillPoly(tile_annotation_mask, [np.array(polygon).astype(np.int32)], 1)
+                for polygon in tile_annotation_list:
+                    cv2.fillPoly(tile_annotation_mask, [np.array(polygon).astype(np.int32)], 1)
 
             stop_y = False
 
@@ -255,9 +246,13 @@ class WSIHandler:
                     global_y = patch_y + tile_y
 
                     patch = tile[patch_y:patch_y + patch_size, patch_x:patch_x + patch_size, :]
-                    patch_mask = tile_annotation_mask[patch_y:patch_y + patch_size, patch_x:patch_x + patch_size]
 
-                    label = self.check_for_label(label_dict, patch_mask)
+                    if annotations is not None:
+                        patch_mask = tile_annotation_mask[patch_y:patch_y + patch_size, patch_x:patch_x + patch_size]
+                        label = self.check_for_label(label_dict, patch_mask)
+
+                    else:
+                        label = 'unlabeled'
 
                     if label is not None:
                         if slide_name is not None:
@@ -291,7 +286,7 @@ class WSIHandler:
     def save_thumbnail(self, patch_size=256, slide_name=None, output_format="png"):
 
         # resolution = [dim // patch_size for dim in self.slide.level_dimensions[0]]
-        resolution = self.slide.level_dimensions[5]
+        resolution = self.slide.level_dimensions[self.config["processing_level"]]
         slide_thumbnail = np.array(self.slide.get_thumbnail(resolution))
 
         file_name = os.path.join(self.output_path, "thumbnail." + output_format)
@@ -304,7 +299,14 @@ class WSIHandler:
 
         annotation_path = os.path.join(self.config["annotation_dir"],
                                        slide_name + "." + self.config["annotation_file_format"])
-        annotation_dict = self.load_annotation(annotation_path)
+
+        if os.path.exists(annotation_path):
+            annotated = True
+            annotation_dict = self.load_annotation(annotation_path)
+        else:
+            annotated = False
+            annotation_dict = None
+
         slide_path = os.path.join(self.config["slides_dir"], slide)
         self.load_slide(slide_path)
         mask, level = self.apply_tissue_detection(level=self.config["processing_level"],
@@ -313,12 +315,11 @@ class WSIHandler:
         tile_dict = self.get_relevant_tiles(mask, tile_size=self.config["tile_size"],
                                             min_coverage=self.config["tissue_coverage"],
                                             level=level,
-                                            annotations=annotation_dict,
                                             show=self.config["show_mode"])
 
         self.make_dirs(output_path=self.config["output_path"],
                        slide_name=slide_name,
-                       label_dict=self.config["label_dict"])
+                       label_dict=self.config["label_dict"], annotated=annotated)
 
         patch_dict = self.extract_patches(tile_dict,
                                           level,
@@ -336,7 +337,13 @@ class WSIHandler:
                             output_format=self.config["output_format"])
 
     def slides2patches(self):
-        slide_list = sorted([f for f in Path(self.config["slides_dir"]).resolve().glob('**/*.tif')])
+        extensions = [".tif", ".svs"]
+        slide_list = []
+
+        for extension in extensions:
+            for file in Path(self.config["slides_dir"]).resolve().glob('**/*'+extension):
+                slide_list.append(file)
+
         annotation_list = os.listdir(self.config["annotation_dir"])
         self.annotation_list = [os.path.splitext(annotation)[0] for annotation in annotation_list]
 
@@ -355,16 +362,24 @@ class WSIHandler:
             slide_list = annotated_slides
             print("Processing annotated slides only")
 
-        pool = multiprocessing.Pool()
-        for _ in tqdm(pool.imap_unordered(self.process_slide, slide_list), total=len(slide_list)):
-            pass
+        if not len(slide_list) == 0:
+            available_threads = multiprocessing.cpu_count() - self.config["blocked_threads"]
+            pool = multiprocessing.Pool(available_threads)
+            for _ in tqdm(pool.imap_unordered(self.process_slide, slide_list), total=len(slide_list)):
+                pass
 
-        # Save used config file
-        file = os.path.join(self.config["output_path"], "config.json")
-        with open(file, "w") as json_file:
-            json.dump(self.config, json_file, indent=4)
+            # Save used config file
+            file = os.path.join(self.config["output_path"], "config.json")
+            with open(file, "w") as json_file:
+                json.dump(self.config, json_file, indent=4)
 
-        print("Finished tiling process!")
+            print("Finished tiling process!")
+
+        else:
+            print("###############################################")
+            print("WARNING: No slides processed!")
+            print("###############################################")
+
 
 if __name__ == "__main__":
     parser = ArgumentParser()

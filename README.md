@@ -10,6 +10,8 @@ The tissue detection is processed on a higher level to speed up the process. The
 Supported annotation types are .xml (Camelyon17) or .geojson (QuPath)
 Right now only binary annotation types are supported (tumor - non-tumor)
 
+Supported slide formats are .tif and .svs right now
+
 Main file is "tile_generator.py" - Execute this file to start the process
 
 | Dictionary Entry | Explanation |

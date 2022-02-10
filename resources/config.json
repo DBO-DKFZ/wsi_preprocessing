@@ -1,15 +1,16 @@
 {
   "tissue_coverage": 0.8,
   "processing_level": 5,
+  "blocked_threads": 2,
   "tile_size": 16,
   "overlap": 0.25,
   "patch_size": 256,
-  "slides_dir": "C:\\Development\\wsi_preprocessing\\resources\\test_slide",
+  "slides_dir": "C:\\Development\\wsi_preprocessing\\resources\\test_slide\\tif_slides",
   "annotation_dir": "C:\\Development\\wsi_preprocessing\\resources\\annotations_json",
-  "annotation_file_format": "json",
+  "annotation_file_format": "geojson",
   "output_path": "C:\\Development\\wsi_preprocessing\\resources\\test_out",
-  "skip_unlabeled_slides": true,
-  "output_format":"jpeg",
+  "skip_unlabeled_slides": false,
+  "output_format":"png",
   "show_mode": false,
   "label_dict": {
     "non_tumor": {
