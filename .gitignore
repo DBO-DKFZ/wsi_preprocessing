@@ -8,6 +8,7 @@
 *.tif
 
 resources/annotations_xml/
+custom/
 
 # pyCharm specific
 __pycache__/*
