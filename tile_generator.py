@@ -34,6 +34,8 @@ import openslide
 import tissue_detection
 
 
+_MULTIPROCESS = True
+
 class WSIHandler:
 
     def __init__(self, config_path='resources/config.json'):
@@ -341,15 +343,30 @@ class WSIHandler:
         with open(file, "w") as json_file:
             json.dump(patch_dict, json_file, indent=4)
 
-    def save_thumbnail(self, patch_size=256, slide_name=None, output_format="png"):
+    def save_thumbnail(self, mask, slide_name,  output_format="png"):
 
-        # resolution = [dim // patch_size for dim in self.slide.level_dimensions[0]]
-        resolution = self.slide.level_dimensions[self.config["processing_level"]]
-        slide_thumbnail = np.array(self.slide.get_thumbnail(resolution))
+        remap_color = ((0, 0, 0), (255, 255, 255))
 
-        file_name = os.path.join(self.output_path, "thumbnail." + output_format)
+        process_level = self.config["processing_level"]
+        img = self.slide.read_region([0, 0], process_level, self.slide.level_dimensions[process_level])
 
-        plt.imsave(file_name, slide_thumbnail, format=output_format)
+        #Remove Alpha
+        img = np.array(img)[:,:,0:3]
+
+        if remap_color is not None:
+
+            indizes = np.all(img == remap_color[0], axis=2)
+            img[indizes] = remap_color[1]
+
+            copy_img = img[mask.astype(np.bool),:]
+
+            median_filtered_img = cv2.medianBlur(img, 11)
+            median_filtered_img[mask.astype(np.bool)] = copy_img
+
+            img = median_filtered_img
+
+        file_name = os.path.join(self.config["output_path"], slide_name, "thumbnail." + output_format)
+        plt.imsave(file_name, img, format=output_format)
 
     def process_slide(self, slide):
         slide_name = os.path.basename(slide)
@@ -369,6 +386,7 @@ class WSIHandler:
         self.load_slide(slide_path)
         mask, level = self.apply_tissue_detection(level=self.config["processing_level"],
                                                   show=self.config["show_mode"])
+
 
         if self.annotation_dict is not None and self.annotated_only:
             tile_dict = self.get_annotated_tiles(mask, self.config["show_mode"])
@@ -394,9 +412,10 @@ class WSIHandler:
 
         self.save_patch_configuration(patch_dict)
 
-        self.save_thumbnail(patch_size=self.config["patch_size"],
+        self.save_thumbnail(mask,
                             slide_name=slide_name,
                             output_format=self.config["output_format"])
+
 
     def slides2patches(self):
         extensions = [".tif", ".svs"]
@@ -426,10 +445,14 @@ class WSIHandler:
             print("Processing annotated slides only")
 
         if not len(slide_list) == 0:
-            available_threads = multiprocessing.cpu_count() - self.config["blocked_threads"]
-            pool = multiprocessing.Pool(available_threads)
-            for _ in tqdm(pool.imap_unordered(self.process_slide, slide_list), total=len(slide_list)):
-                pass
+            if _MULTIPROCESS:
+                available_threads = multiprocessing.cpu_count() - self.config["blocked_threads"]
+                pool = multiprocessing.Pool(available_threads)
+                for _ in tqdm(pool.imap_unordered(self.process_slide, slide_list), total=len(slide_list)):
+                    pass
+            else:
+                for slide in tqdm(slide_list):
+                    self.process_slide(slide)
 
             # Save used config file
             file = os.path.join(self.config["output_path"], "config.json")
