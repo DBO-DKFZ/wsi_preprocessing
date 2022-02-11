@@ -188,6 +188,16 @@ class WSIHandler:
 
         colored = cv2.cvtColor(tissue_mask, cv2.COLOR_GRAY2RGB)
 
+        if self.annotation_dict is not None:
+            annotation_mask = np.zeros(shape=(tissue_mask.shape[0], tissue_mask.shape[1]))
+            scaling_factor = self.slide.level_downsamples[self.config["processing_level"]]
+            scaled_list = [
+                [[point[0] / scaling_factor, point[1] / scaling_factor] for point in self.annotation_dict[polygon]]
+                for polygon in self.annotation_dict]
+
+            for polygon in scaled_list:
+                cv2.fillPoly(annotation_mask, [np.array(polygon).astype(np.int32)], 1)
+
         relevant_tiles_dict = {}
         tile_nb = 0
 
@@ -197,10 +207,19 @@ class WSIHandler:
                 tile = tissue_mask[row * tile_size:row * tile_size + tile_size,
                        col * tile_size:col * tile_size + tile_size]
                 tissue_coverage = np.count_nonzero(tile) / tile.size
+                annotated = False
+
+                if self.annotation_dict is not None:
+                    if np.count_nonzero(annotation_mask[
+                                        row * self.config["tile_size"]:row * self.config["tile_size"] + self.config[
+                                            "tile_size"],
+                                        col * self.config["tile_size"]:col * self.config["tile_size"] + self.config[
+                                            "tile_size"]]) > 0:
+                        annotated = True
 
                 if tissue_coverage >= min_coverage:
                     relevant_tiles_dict.update({tile_nb: {"x": col * tile_size, "y": row * tile_size,
-                                                          "size": tile_size, "level": level}})
+                                                          "size": tile_size, "level": level, "annotated": annotated}})
 
                     tissue_mask = cv2.rectangle(colored, (col * tile_size, row * tile_size),
                                                 (col * tile_size + tile_size, row * tile_size + tile_size),
@@ -257,13 +276,24 @@ class WSIHandler:
         patch_nb = 0
 
         for tile_key in tile_dict:
+
+            # ToDo: rows and cols arent calculated correctly, instead a quick fix by using breaks was applied
+
             tile_x = tile_dict[tile_key]["x"] * scaling_factor
             tile_y = tile_dict[tile_key]["y"] * scaling_factor
             tile_size = tile_dict[tile_key]["size"] * scaling_factor
 
-            # ToDo: rows and cols arent calculated correctly, instead a quick fix by using breaks was applied
-            rows = int(np.ceil((tile_size + overlap) / (patch_size - px_overlap)))
-            cols = int(np.ceil((tile_size + overlap) / (patch_size - px_overlap)))
+            if self.config["annotation_only_overlap"] and tile_dict[tile_key]["annotated"]:
+                rows = int(np.ceil((tile_size + overlap) / (patch_size - px_overlap)))
+                cols = int(np.ceil((tile_size + overlap) / (patch_size - px_overlap)))
+
+            elif self.config["annotation_only_overlap"] and not tile_dict[tile_key]["annotated"]:
+                rows = int(np.ceil(tile_size / patch_size))
+                cols = int(np.ceil(tile_size / patch_size))
+
+            else:
+                rows = int(np.ceil((tile_size + overlap) / (patch_size - px_overlap)))
+                cols = int(np.ceil((tile_size + overlap) / (patch_size - px_overlap)))
 
             tile = np.array(self.slide.read_region((tile_x, tile_y), level=0, size=(tile_size, tile_size)))
             tile = tile[:, :, 0:3]
@@ -388,11 +418,11 @@ class WSIHandler:
                                                   show=self.config["show_mode"])
 
 
-        if self.annotation_dict is not None and self.annotated_only:
-            tile_dict = self.get_annotated_tiles(mask, self.config["show_mode"])
+        #if self.annotation_dict is not None and self.annotated_only:
+        #    tile_dict = self.get_annotated_tiles(mask, self.config["show_mode"])
 
-        else:
-            tile_dict = self.get_relevant_tiles(mask, tile_size=self.config["tile_size"],
+        #else:
+        tile_dict = self.get_relevant_tiles(mask, tile_size=self.config["tile_size"],
                                                 min_coverage=self.config["tissue_coverage"],
                                                 level=self.config["processing_level"],
                                                 show=self.config["show_mode"])

@@ -4,6 +4,7 @@
   "blocked_threads": 2,
   "tile_size": 16,
   "overlap": 0.25,
+  "annotation_only_overlap": true,
   "patch_size": 256,
   "slides_dir": "E:\\camelyon17\\test_tumors",
   "annotation_dir": "E:\\camelyon17\\annotations_xml",
