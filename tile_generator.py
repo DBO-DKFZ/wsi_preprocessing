@@ -399,6 +399,8 @@ class WSIHandler:
         slide_name = os.path.basename(slide)
         slide_name = os.path.splitext(slide_name)[0]
 
+        print("Found annotation for slide", slide_name, "process id is", os.getpid())
+
         annotation_path = os.path.join(self.config["annotation_dir"],
                                        slide_name + "." + self.config["annotation_file_format"])
 
@@ -444,6 +446,7 @@ class WSIHandler:
                             slide_name=slide_name,
                             output_format=self.config["output_format"])
 
+        print("Finished slide ", slide_name)
 
     def slides2patches(self):
         extensions = [".tif", ".svs"]
@@ -473,11 +476,13 @@ class WSIHandler:
             print("Processing annotated slides only")
 
         if not len(slide_list) == 0:
+            slide_list = sorted(slide_list)
             if _MULTIPROCESS:
                 available_threads = multiprocessing.cpu_count() - self.config["blocked_threads"]
                 pool = multiprocessing.Pool(available_threads)
-                for _ in tqdm(pool.imap_unordered(self.process_slide, slide_list), total=len(slide_list)):
-                    pass
+                pool.map(self.process_slide, slide_list)
+                # for _ in tqdm(pool.imap_unordered(self.process_slide, slide_list), total=len(slide_list)):
+                #     pass
             else:
                 for slide in tqdm(slide_list):
                     self.process_slide(slide)
