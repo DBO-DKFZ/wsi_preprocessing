@@ -26,5 +26,5 @@ def main(config_path):
 
 
 if __name__ == "__main__":
-    config_path = 'custom/config_alex.json'
+    config_path = 'resources/config.json'
     main(config_path)

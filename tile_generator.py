@@ -270,7 +270,6 @@ class WSIHandler:
                         slide_name=None, output_format="png"):
         # TODO: Only working with binary labels right now
         px_overlap = int(patch_size * overlap)
-        px_ann_overlap = int(patch_size * annotation_overlap)
         patch_dict = {}
 
         scaling_factor = int(self.slide.level_downsamples[level])
@@ -285,10 +284,12 @@ class WSIHandler:
             tile_size = tile_dict[tile_key]["size"] * scaling_factor
 
             if tile_dict[tile_key]["annotated"]:
-                rows = int(np.ceil((tile_size + annotation_overlap) / (patch_size - px_ann_overlap)))
-                cols = int(np.ceil((tile_size + annotation_overlap) / (patch_size - px_ann_overlap)))
+                px_overlap = int(patch_size * annotation_overlap)
+                rows = int(np.ceil((tile_size + annotation_overlap) / (patch_size - px_overlap)))
+                cols = int(np.ceil((tile_size + annotation_overlap) / (patch_size - px_overlap)))
 
             else:
+                px_overlap = int(patch_size * overlap)
                 rows = int(np.ceil((tile_size + overlap) / (patch_size - px_overlap)))
                 cols = int(np.ceil((tile_size + overlap) / (patch_size - px_overlap)))
 
@@ -502,7 +503,7 @@ class WSIHandler:
 
 if __name__ == "__main__":
     parser = ArgumentParser()
-    parser.add_argument("--config_path", default="custom/config_alex.json")
+    parser.add_argument("--config_path", default="resources/config.json")
     args = parser.parse_args()
 
     slide_handler = WSIHandler(config_path=args.config_path)
