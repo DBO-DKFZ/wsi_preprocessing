@@ -266,7 +266,7 @@ class WSIHandler:
 
         self.output_path = slide_path
 
-    def extract_patches(self, tile_dict, level, annotations, label_dict, overlap=0, patch_size=256,
+    def extract_patches(self, tile_dict, level, annotations, label_dict, overlap=0, annotation_overlap=0, patch_size=256,
                         slide_name=None, output_format="png"):
         # TODO: Only working with binary labels right now
         px_overlap = int(patch_size * overlap)
@@ -283,15 +283,13 @@ class WSIHandler:
             tile_y = tile_dict[tile_key]["y"] * scaling_factor
             tile_size = tile_dict[tile_key]["size"] * scaling_factor
 
-            if self.config["annotation_only_overlap"] and tile_dict[tile_key]["annotated"]:
-                rows = int(np.ceil((tile_size + overlap) / (patch_size - px_overlap)))
-                cols = int(np.ceil((tile_size + overlap) / (patch_size - px_overlap)))
-
-            elif self.config["annotation_only_overlap"] and not tile_dict[tile_key]["annotated"]:
-                rows = int(np.ceil(tile_size / patch_size))
-                cols = int(np.ceil(tile_size / patch_size))
+            if tile_dict[tile_key]["annotated"]:
+                px_overlap = int(patch_size * annotation_overlap)
+                rows = int(np.ceil((tile_size + annotation_overlap) / (patch_size - px_overlap)))
+                cols = int(np.ceil((tile_size + annotation_overlap) / (patch_size - px_overlap)))
 
             else:
+                px_overlap = int(patch_size * overlap)
                 rows = int(np.ceil((tile_size + overlap) / (patch_size - px_overlap)))
                 cols = int(np.ceil((tile_size + overlap) / (patch_size - px_overlap)))
 
@@ -388,10 +386,10 @@ class WSIHandler:
             indizes = np.all(img == remap_color[0], axis=2)
             img[indizes] = remap_color[1]
 
-            copy_img = img[mask.astype(np.bool),:]
+            copy_img = img[mask.astype(bool),:]
 
             median_filtered_img = cv2.medianBlur(img, 11)
-            median_filtered_img[mask.astype(np.bool)] = copy_img
+            median_filtered_img[mask.astype(bool)] = copy_img
 
             img = median_filtered_img
 
@@ -401,6 +399,8 @@ class WSIHandler:
     def process_slide(self, slide):
         slide_name = os.path.basename(slide)
         slide_name = os.path.splitext(slide_name)[0]
+
+        print("Found annotation for slide", slide_name, "process id is", os.getpid())
 
         annotation_path = os.path.join(self.config["annotation_dir"],
                                        slide_name + "." + self.config["annotation_file_format"])
@@ -436,6 +436,7 @@ class WSIHandler:
                                           self.annotation_dict,
                                           self.config["label_dict"],
                                           overlap=self.config["overlap"],
+                                          annotation_overlap=self.config["annotation_overlap"],
                                           patch_size=self.config["patch_size"],
                                           slide_name=slide_name,
                                           output_format=self.config["output_format"])
@@ -446,6 +447,7 @@ class WSIHandler:
                             slide_name=slide_name,
                             output_format=self.config["output_format"])
 
+        print("Finished slide ", slide_name)
 
     def slides2patches(self):
         extensions = [".tif", ".svs"]
@@ -475,11 +477,13 @@ class WSIHandler:
             print("Processing annotated slides only")
 
         if not len(slide_list) == 0:
+            slide_list = sorted(slide_list)
             if _MULTIPROCESS:
                 available_threads = multiprocessing.cpu_count() - self.config["blocked_threads"]
                 pool = multiprocessing.Pool(available_threads)
-                for _ in tqdm(pool.imap_unordered(self.process_slide, slide_list), total=len(slide_list)):
-                    pass
+                pool.map(self.process_slide, slide_list)
+                # for _ in tqdm(pool.imap_unordered(self.process_slide, slide_list), total=len(slide_list)):
+                #     pass
             else:
                 for slide in tqdm(slide_list):
                     self.process_slide(slide)
