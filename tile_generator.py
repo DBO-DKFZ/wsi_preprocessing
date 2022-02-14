@@ -33,8 +33,8 @@ import openslide
 # Custom
 import tissue_detection
 
-
 _MULTIPROCESS = True
+
 
 class WSIHandler:
 
@@ -64,6 +64,10 @@ class WSIHandler:
         self.total_width = self.slide.dimensions[0]
         self.total_height = self.slide.dimensions[1]
         self.levels = self.slide.level_count - 1
+
+        assert self.levels >= self.config[
+            "processing_level"], "Processing level above highest available slide level. Maximum slide level is " + str(
+            self.levels) + ", processing level is " + str(self.config["processing_level"])
 
     def load_annotation(self, annotation_path):
         annotation_dict = {}
@@ -128,57 +132,15 @@ class WSIHandler:
 
         return tissue_mask, level
 
-    def get_annotated_tiles(self, tissue_mask, show=False):
+    def determine_tile_size(self):
 
-        rows, row_residue = divmod(tissue_mask.shape[0], self.config["tile_size"])
-        cols, col_residue = divmod(tissue_mask.shape[1], self.config["tile_size"])
+        tile_size_0 = self.config["patches_per_tile"] * self.config["patch_size"]
+        downsampling_factor = int(self.slide.level_downsamples[self.config["processing_level"]])
+        tile_size = int(tile_size_0 / downsampling_factor)
 
-        relevant_tiles_dict = {}
-        tile_nb = 0
+        assert self.config["patches_per_tile"] >= 1, "Patches per tile must be greater than 1."
 
-        colored = cv2.cvtColor(tissue_mask, cv2.COLOR_GRAY2RGB)
-
-        annotation_mask = np.zeros(shape=(tissue_mask.shape[0], tissue_mask.shape[1]))
-        scaling_factor = self.slide.level_downsamples[self.config["processing_level"]]
-        scaled_list = [
-            [[point[0] / scaling_factor, point[1] / scaling_factor] for point in self.annotation_dict[polygon]]
-            for polygon in self.annotation_dict]
-
-        for polygon in scaled_list:
-            cv2.fillPoly(annotation_mask, [np.array(polygon).astype(np.int32)], 1)
-
-        if show:
-            plt.imshow(annotation_mask)
-            plt.show()
-
-        for row in range(rows):
-            for col in range(cols):
-
-                annotated = False
-                if np.count_nonzero(annotation_mask[
-                                    row * self.config["tile_size"]:row * self.config["tile_size"] + self.config[
-                                        "tile_size"],
-                                    col * self.config["tile_size"]:col * self.config["tile_size"] + self.config[
-                                        "tile_size"]]) > 0:
-                    annotated = True
-
-                if annotated:
-                    relevant_tiles_dict.update(
-                        {tile_nb: {"x": col * self.config["tile_size"], "y": row * self.config["tile_size"],
-                                   "size": self.config["tile_size"], "level": self.config["processing_level"]}})
-
-                    tissue_mask = cv2.rectangle(colored,
-                                                (col * self.config["tile_size"], row * self.config["tile_size"]),
-                                                (col * self.config["tile_size"] + self.config["tile_size"],
-                                                 row * self.config["tile_size"] + self.config["tile_size"]),
-                                                (0, 255, 0), 1)
-                    tile_nb += 1
-
-        if show:
-            plt.imshow(tissue_mask)
-            plt.show()
-
-        return relevant_tiles_dict
+        return tile_size
 
     def get_relevant_tiles(self, tissue_mask, tile_size, min_coverage, level, show=False):
 
@@ -211,10 +173,8 @@ class WSIHandler:
 
                 if self.annotation_dict is not None:
                     if np.count_nonzero(annotation_mask[
-                                        row * self.config["tile_size"]:row * self.config["tile_size"] + self.config[
-                                            "tile_size"],
-                                        col * self.config["tile_size"]:col * self.config["tile_size"] + self.config[
-                                            "tile_size"]]) > 0:
+                                        row * tile_size:row * tile_size + tile_size,
+                                        col * tile_size:col * tile_size + tile_size]) > 0:
                         annotated = True
 
                 if tissue_coverage >= min_coverage:
@@ -266,7 +226,8 @@ class WSIHandler:
 
         self.output_path = slide_path
 
-    def extract_patches(self, tile_dict, level, annotations, label_dict, overlap=0, annotation_overlap=0, patch_size=256,
+    def extract_patches(self, tile_dict, level, annotations, label_dict, overlap=0, annotation_overlap=0,
+                        patch_size=256,
                         slide_name=None, output_format="png"):
         # TODO: Only working with binary labels right now
         px_overlap = int(patch_size * overlap)
@@ -347,14 +308,16 @@ class WSIHandler:
 
                                 file_name = slide_name + "_" + str(global_x) + "_" + str(global_y) + "." + output_format
                             else:
-                                file_name = str(patch_nb) + "_" + str(global_x) + "_" + str(global_y) + "." + output_format
+                                file_name = str(patch_nb) + "_" + str(global_x) + "_" + str(
+                                    global_y) + "." + output_format
 
                             patch = Image.fromarray(patch)
                             patch.save(os.path.join(self.output_path, label, file_name), format=output_format)
 
-                            patch_dict.update({patch_nb: {"x_pos": global_x, "y_pos": global_y, "patch_size": patch_size,
-                                                          "label": label, "slide_name": slide_name,
-                                                          "patch_path": os.path.join(label, file_name)}})
+                            patch_dict.update(
+                                {patch_nb: {"x_pos": global_x, "y_pos": global_y, "patch_size": patch_size,
+                                            "label": label, "slide_name": slide_name,
+                                            "patch_path": os.path.join(label, file_name)}})
 
                             patch_nb += 1
                     if stop_x:
@@ -371,22 +334,21 @@ class WSIHandler:
         with open(file, "w") as json_file:
             json.dump(patch_dict, json_file, indent=4)
 
-    def save_thumbnail(self, mask, slide_name,  output_format="png"):
+    def save_thumbnail(self, mask, slide_name, output_format="png"):
 
         remap_color = ((0, 0, 0), (255, 255, 255))
 
         process_level = self.config["processing_level"]
         img = self.slide.read_region([0, 0], process_level, self.slide.level_dimensions[process_level])
 
-        #Remove Alpha
-        img = np.array(img)[:,:,0:3]
+        # Remove Alpha
+        img = np.array(img)[:, :, 0:3]
 
         if remap_color is not None:
-
             indizes = np.all(img == remap_color[0], axis=2)
             img[indizes] = remap_color[1]
 
-            copy_img = img[mask.astype(bool),:]
+            copy_img = img[mask.astype(bool), :]
 
             median_filtered_img = cv2.medianBlur(img, 11)
             median_filtered_img[mask.astype(bool)] = copy_img
@@ -416,16 +378,12 @@ class WSIHandler:
         self.load_slide(slide_path)
         mask, level = self.apply_tissue_detection(level=self.config["processing_level"],
                                                   show=self.config["show_mode"])
+        tile_size = self.determine_tile_size()
 
-
-        #if self.annotation_dict is not None and self.annotated_only:
-        #    tile_dict = self.get_annotated_tiles(mask, self.config["show_mode"])
-
-        #else:
-        tile_dict = self.get_relevant_tiles(mask, tile_size=self.config["tile_size"],
-                                                min_coverage=self.config["tissue_coverage"],
-                                                level=self.config["processing_level"],
-                                                show=self.config["show_mode"])
+        tile_dict = self.get_relevant_tiles(mask, tile_size=tile_size,
+                                            min_coverage=self.config["tissue_coverage"],
+                                            level=self.config["processing_level"],
+                                            show=self.config["show_mode"])
 
         self.make_dirs(output_path=self.config["output_path"],
                        slide_name=slide_name,
