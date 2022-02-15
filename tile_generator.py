@@ -135,8 +135,8 @@ class WSIHandler:
     def determine_tile_size(self):
 
         tile_size_0 = self.config["patches_per_tile"] * self.config["patch_size"]
-        downsampling_factor = int(self.slide.level_downsamples[self.config["processing_level"]])
-        tile_size = int(tile_size_0 / downsampling_factor)
+        downscale_factor = int(self.slide.level_downsamples[self.config["processing_level"]])
+        tile_size = int(tile_size_0 / downscale_factor)
 
         assert self.config["patches_per_tile"] >= 1, "Patches per tile must be greater than 1."
 
