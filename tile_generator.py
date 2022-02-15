@@ -465,7 +465,7 @@ class WSIHandler:
 
 if __name__ == "__main__":
     parser = ArgumentParser()
-    parser.add_argument("--config_path", default="resources/config.json")
+    parser.add_argument("--config_path", default=script_dir+"/resources/config.json")
     args = parser.parse_args()
 
     slide_handler = WSIHandler(config_path=args.config_path)
