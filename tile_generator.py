@@ -47,16 +47,20 @@ class WSIHandler:
         self.current_level = 0
         self.annotation_list = None
         self.annotation_dict = None
-        try:
-            self.config = self.load_config(config_path)
-        except:
-            print("Cannot load config")
-            sys.exit()
+        self.config = self.load_config(config_path)
         self.annotated_only = self.config["save_annotated_only"]
 
     def load_config(self, config_path):
+        assert os.path.exists(config_path), "Cannot find "+config_path
         with open(config_path) as json_file:
             config = json.load(json_file)
+
+        assert 1 >= config["tissue_coverage"] >= 0, "Tissue coverage must be between 1 and 0"
+        assert config["blocked_threads"] >= 0
+        assert config["patches_per_tile"] >= 1, "Patches per tile must be >= 1"
+        assert 0 <= config["overlap"] < 1, "Overlap must be between 1 and 0"
+        assert config["annotation_overlap"] >= 0 and config["overlap"] < 1, "Annotation overlap must be between 1 and 0"
+
         return config
 
     def load_slide(self, slide_path):
