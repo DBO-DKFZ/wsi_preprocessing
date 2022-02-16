@@ -69,8 +69,7 @@ class WSIHandler:
         self.total_height = self.slide.dimensions[1]
         self.levels = self.slide.level_count - 1
 
-        assert self.levels >= self.config[
-            "processing_level"], "Processing level above highest available slide level. Maximum slide level is " + str(
+        assert self.levels >= self.config["processing_level"], "Processing level above highest available slide level. Maximum slide level is " + str(
             self.levels) + ", processing level is " + str(self.config["processing_level"])
 
     def load_annotation(self, annotation_path):
