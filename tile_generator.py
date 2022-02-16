@@ -3,6 +3,7 @@ import os
 import sys
 from pathlib import Path
 from argparse import ArgumentParser
+import time
 
 # Advanced
 import xml.etree.ElementTree as ET
@@ -184,10 +185,16 @@ class WSIHandler:
                     relevant_tiles_dict.update({tile_nb: {"x": col * tile_size, "y": row * tile_size,
                                                           "size": tile_size, "level": level, "annotated": annotated}})
 
-                    tissue_mask = cv2.rectangle(colored, (col * tile_size, row * tile_size),
-                                                (col * tile_size + tile_size, row * tile_size + tile_size),
-                                                (255, 0, 0),
-                                                1)
+                    if annotated:
+                        tissue_mask = cv2.rectangle(colored, (col * tile_size, row * tile_size),
+                                                    (col * tile_size + tile_size, row * tile_size + tile_size),
+                                                    (0, 255, 0),
+                                                    3)
+                    else:
+                        tissue_mask = cv2.rectangle(colored, (col * tile_size, row * tile_size),
+                                                    (col * tile_size + tile_size, row * tile_size + tile_size),
+                                                    (255, 0, 0),
+                                                    1)
                     tile_nb += 1
 
         if show:
@@ -240,93 +247,99 @@ class WSIHandler:
         patch_nb = 0
 
         for tile_key in tile_dict:
-
-            # ToDo: rows and cols arent calculated correctly, instead a quick fix by using breaks was applied
-
-            tile_x = tile_dict[tile_key]["x"] * scaling_factor
-            tile_y = tile_dict[tile_key]["y"] * scaling_factor
-            tile_size = tile_dict[tile_key]["size"] * scaling_factor
-
-            if tile_dict[tile_key]["annotated"]:
-                px_overlap = int(patch_size * annotation_overlap)
-                rows = int(np.ceil((tile_size + annotation_overlap) / (patch_size - px_overlap)))
-                cols = int(np.ceil((tile_size + annotation_overlap) / (patch_size - px_overlap)))
-
+            # skip unannotated tiles in case only annotated patches should be saved
+            if self.annotated_only and not tile_dict[tile_key]["annotated"]:
+                pass
             else:
-                px_overlap = int(patch_size * overlap)
-                rows = int(np.ceil((tile_size + overlap) / (patch_size - px_overlap)))
-                cols = int(np.ceil((tile_size + overlap) / (patch_size - px_overlap)))
+                # ToDo: rows and cols arent calculated correctly, instead a quick fix by using breaks was applied
 
-            tile = np.array(self.slide.read_region((tile_x, tile_y), level=0, size=(tile_size, tile_size)))
-            tile = tile[:, :, 0:3]
+                tile_x = tile_dict[tile_key]["x"] * scaling_factor
+                tile_y = tile_dict[tile_key]["y"] * scaling_factor
+                tile_size = tile_dict[tile_key]["size"] * scaling_factor
 
-            if annotations is not None:
-                # Translate from world coordinates to tile coordinates
-                tile_annotation_list = [[[point[0] - tile_x, point[1] - tile_y] for point in annotations[polygon]] for
-                                        polygon in annotations]
+                if tile_dict[tile_key]["annotated"]:
+                    px_overlap = int(patch_size * annotation_overlap)
+                    rows = int(np.ceil((tile_size + annotation_overlap) / (patch_size - px_overlap)))
+                    cols = int(np.ceil((tile_size + annotation_overlap) / (patch_size - px_overlap)))
 
-                # Create mask from polygons
-                tile_annotation_mask = np.zeros(shape=(tile_size, tile_size))
+                else:
+                    px_overlap = int(patch_size * overlap)
+                    rows = int(np.ceil((tile_size + overlap) / (patch_size - px_overlap)))
+                    cols = int(np.ceil((tile_size + overlap) / (patch_size - px_overlap)))
 
-                for polygon in tile_annotation_list:
-                    cv2.fillPoly(tile_annotation_mask, [np.array(polygon).astype(np.int32)], 1)
+                tile = np.array(self.slide.read_region((tile_x, tile_y), level=0, size=(tile_size, tile_size)))
+                tile = tile[:, :, 0:3]
 
-            stop_y = False
+                if annotations is not None:
+                    # Translate from world coordinates to tile coordinates
+                    tile_annotation_list = [[[point[0] - tile_x, point[1] - tile_y] for point in annotations[polygon]] for
+                                            polygon in annotations]
 
-            for row in range(rows):
-                stop_x = False
+                    # Create mask from polygons
+                    tile_annotation_mask = np.zeros(shape=(tile_size, tile_size))
 
-                for col in range(cols):
+                    for polygon in tile_annotation_list:
+                        cv2.fillPoly(tile_annotation_mask, [np.array(polygon).astype(np.int32)], 1)
 
-                    # Calculate patch coordinates
-                    patch_x = int(col * (patch_size - px_overlap))
-                    patch_y = int(row * (patch_size - px_overlap))
+                stop_y = False
 
-                    if patch_y + patch_size >= tile_size:
-                        stop_y = True
-                        patch_y = tile_size - patch_size
+                for row in range(rows):
+                    stop_x = False
 
-                    if patch_x + patch_size >= tile_size:
-                        stop_x = True
-                        patch_x = tile_size - patch_size
+                    for col in range(cols):
 
-                    global_x = patch_x + tile_x
-                    global_y = patch_y + tile_y
+                        # Calculate patch coordinates
+                        patch_x = int(col * (patch_size - px_overlap))
+                        patch_y = int(row * (patch_size - px_overlap))
 
-                    patch = tile[patch_y:patch_y + patch_size, patch_x:patch_x + patch_size, :]
+                        if patch_y + patch_size >= tile_size:
+                            stop_y = True
+                            patch_y = tile_size - patch_size
 
-                    annotated = False
-                    if annotations is not None:
-                        patch_mask = tile_annotation_mask[patch_y:patch_y + patch_size, patch_x:patch_x + patch_size]
-                        if np.sum(patch_mask) == patch_mask.size:
-                            annotated = True
-                        label = self.check_for_label(label_dict, patch_mask)
+                        if patch_x + patch_size >= tile_size:
+                            stop_x = True
+                            patch_x = tile_size - patch_size
 
-                    else:
-                        label = 'unlabeled'
+                        global_x = patch_x + tile_x
+                        global_y = patch_y + tile_y
 
-                    if label is not None:
-                        if self.annotated_only and annotated or not self.annotated_only:
-                            if slide_name is not None:
+                        patch = tile[patch_y:patch_y + patch_size, patch_x:patch_x + patch_size, :]
 
-                                file_name = slide_name + "_" + str(global_x) + "_" + str(global_y) + "." + output_format
-                            else:
-                                file_name = str(patch_nb) + "_" + str(global_x) + "_" + str(
-                                    global_y) + "." + output_format
+                        annotated = False
+                        if annotations is not None:
+                            patch_mask = tile_annotation_mask[patch_y:patch_y + patch_size, patch_x:patch_x + patch_size]
+                            #if np.sum(patch_mask) == patch_mask.size:
+                            #    annotated = True
+                            label = self.check_for_label(label_dict, patch_mask)
+                            if label is not None:
+                                if self.config["label_dict"][label]["annotated"]:
+                                    annotated = True
 
-                            patch = Image.fromarray(patch)
-                            patch.save(os.path.join(self.output_path, label, file_name), format=output_format)
+                        else:
+                            label = 'unlabeled'
 
-                            patch_dict.update(
-                                {patch_nb: {"x_pos": global_x, "y_pos": global_y, "patch_size": patch_size,
-                                            "label": label, "slide_name": slide_name,
-                                            "patch_path": os.path.join(label, file_name)}})
+                        if label is not None:
+                            if self.annotated_only and annotated or not self.annotated_only:
+                                if slide_name is not None:
 
-                            patch_nb += 1
-                    if stop_x:
+                                    file_name = slide_name + "_" + str(global_x) + "_" + str(global_y) + "." + output_format
+                                else:
+                                    file_name = str(patch_nb) + "_" + str(global_x) + "_" + str(
+                                        global_y) + "." + output_format
+
+                                patch = Image.fromarray(patch)
+                                patch.save(os.path.join(self.output_path, label, file_name), format=output_format)
+
+                                patch_dict.update(
+                                    {patch_nb: {"x_pos": global_x, "y_pos": global_y, "patch_size": patch_size,
+                                                "label": label, "slide_name": slide_name,
+                                                "patch_path": os.path.join(label, file_name)}})
+
+                                patch_nb += 1
+                        if stop_x:
+                            break
+                    if stop_y:
                         break
-                if stop_y:
-                    break
 
         return patch_dict
 
@@ -467,5 +480,10 @@ if __name__ == "__main__":
     parser.add_argument("--config_path", default=script_dir+"/resources/config.json")
     args = parser.parse_args()
 
+    start = time.time()
+
     slide_handler = WSIHandler(config_path=args.config_path)
     slide_handler.slides2patches()
+    end = time.time()
+
+    print("time consumed", str(end-start))

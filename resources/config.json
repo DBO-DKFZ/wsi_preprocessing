@@ -1,27 +1,29 @@
 {
-  "tissue_coverage": 0.5,
-  "processing_level": 3,
-  "blocked_threads": 2,
+  "tissue_coverage": 0.75,
+  "processing_level": 5,
+  "blocked_threads": 0,
   "patches_per_tile": 8,
   "overlap": 0.0,
-  "annotation_overlap": 0.5,
+  "annotation_overlap": 0.0,
   "patch_size": 256,
-  "slides_dir": "C:\\Development\\wsi_preprocessing\\resources\\test_slide",
-  "annotation_dir": "C:\\Development\\wsi_preprocessing\\resources\\annotations_json",
+  "slides_dir": "E:\\camelyon17\\annotated_slides",
+  "annotation_dir": "E:\\camelyon17\\annotations_xml",
   "annotation_file_format": "xml",
-  "output_path": "C:\\Development\\wsi_preprocessing\\resources\\test_out",
-  "skip_unlabeled_slides": false,
+  "output_path": "E:\\camelyon17\\output\\benchmark",
+  "skip_unlabeled_slides": true,
   "save_annotated_only": true,
-  "output_format":"png",
+  "output_format":"jpeg",
   "show_mode": false,
   "label_dict": {
     "non_tumor": {
       "type": "==",
-      "threshold": 0
+      "threshold": 0,
+      "annotated": false
     },
     "tumor": {
       "type": ">=",
-      "threshold": 0.5
+      "threshold": 0.01,
+      "annotated": true
     }
   }
 }
