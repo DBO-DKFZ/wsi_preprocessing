@@ -23,7 +23,7 @@ NOTE:
 Right now there is a bug on Unix systems regarding openslide where image data isnt properly loaded. To fix this follow:
 https://github.com/openslide/openslide-python/issues/58#issuecomment-883446558
 
-###Config Explanation:
+### Config Explanation:
 
 | Dictionary Entry | Explanation |
 | ----------- | ----------- |
