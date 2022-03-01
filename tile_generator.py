@@ -34,7 +34,7 @@ import openslide
 # Custom
 import tissue_detection
 
-_MULTIPROCESS = False
+_MULTIPROCESS = True
 
 
 class WSIHandler:
@@ -254,14 +254,14 @@ class WSIHandler:
 
     def normalize_tile_size(self, tile):
 
-        normalizing_factor_x = self.config["microns_per_pixel"]/self.res_x
+        normalizing_factor_x = self.config["microns_per_pixel"] / self.res_x
         normalizing_factor_y = self.config["microns_per_pixel"] / self.res_y
 
         tile_height = tile.shape[1]
         tile_width = tile.shape[0]
 
-        scaled_height = int(tile_height/normalizing_factor_y)
-        scaled_width = int(tile_width/normalizing_factor_x)
+        scaled_height = int(tile_height / normalizing_factor_y)
+        scaled_width = int(tile_width / normalizing_factor_x)
 
         resized_tile = cv2.resize(tile, (scaled_width, scaled_height))
         new_tile_size = scaled_height
@@ -269,23 +269,110 @@ class WSIHandler:
         return resized_tile, new_tile_size
 
     def extract_calibrated_patches(self, tile_dict, level, annotations, label_dict, overlap=0, annotation_overlap=0,
-                        patch_size=256,
-                        slide_name=None, output_format="png"):
+                                   slide_name=None, output_format="png"):
 
         scaling_factor = int(self.slide.level_downsamples[level])
+
+        patch_dict = {}
 
         for tile_key in tile_dict:
             tile_x = tile_dict[tile_key]["x"] * scaling_factor
             tile_y = tile_dict[tile_key]["y"] * scaling_factor
 
             tile_size_px = tile_dict[tile_key]["size"] * scaling_factor
-            tile_size_mu_m = tile_size_px * self.res_x
+
+            patch_size_px_x = int(np.round(self.config["calibration"]["patch_size_microns"] / self.res_x))
+            patch_size_px_y = int(np.round(self.config["calibration"]["patch_size_microns"] / self.res_y))
 
             tile = np.array(self.slide.read_region((tile_x, tile_y), level=0, size=(tile_size_px, tile_size_px)))
             tile = tile[:, :, 0:3]
 
+            if tile_dict[tile_key]["annotated"]:
+                px_overlap_x = int(patch_size_px_x * annotation_overlap)
+                px_overlap_y = int(patch_size_px_y * annotation_overlap)
 
+            else:
+                px_overlap_x = int(patch_size_px_x * overlap)
+                px_overlap_y = int(patch_size_px_y * overlap)
 
+            rows = int(np.ceil(tile_size_px / (patch_size_px_y - px_overlap_y)))
+            cols = int(np.ceil(tile_size_px / (patch_size_px_x - px_overlap_x)))
+
+            # create annotation mask
+            if annotations is not None:
+                # Translate from world coordinates to tile coordinates
+                tile_annotation_list = [[[point[0] - tile_x, point[1] - tile_y] for point in annotations[polygon]]
+                                        for
+                                        polygon in annotations]
+
+                # Create mask from polygons
+                tile_annotation_mask = np.zeros(shape=(tile_size_px, tile_size_px))
+
+                for polygon in tile_annotation_list:
+                    cv2.fillPoly(tile_annotation_mask, [np.array(polygon).astype(np.int32)], 1)
+
+            stop_y = False
+            patch_nb = 0
+            for row in range(rows):
+                stop_x = False
+
+                for col in range(cols):
+
+                    # Calculate patch coordinates
+                    patch_x = int(col * (patch_size_px_x - px_overlap_x))
+                    patch_y = int(row * (patch_size_px_y - px_overlap_y))
+
+                    if patch_y + patch_size_px_y >= tile_size_px:
+                        stop_y = True
+                        patch_y = tile_size_px - patch_size_px_y
+
+                    if patch_x + patch_size_px_x >= tile_size_px:
+                        stop_x = True
+                        patch_x = tile_size_px - patch_size_px_x
+
+                    global_x = patch_x + tile_x
+                    global_y = patch_y + tile_y
+
+                    patch = tile[patch_y:patch_y + patch_size_px_y, patch_x:patch_x + patch_size_px_x, :]
+
+                    # check if the patch is annotated
+                    annotated = False
+                    if annotations is not None:
+                        patch_mask = tile_annotation_mask[patch_y:patch_y + patch_size_px_y,
+                                     patch_x: patch_x + patch_size_px_x]
+                        label = self.check_for_label(label_dict, patch_mask)
+                        if label is not None:
+                            if self.config["label_dict"][label]["annotated"]:
+                                annotated = True
+
+                    else:
+                        label = 'unlabeled'
+
+                    if label is not None:
+                        if self.annotated_only and annotated or not self.annotated_only:
+
+                            file_name = slide_name + "_" + str(global_x) + "_" + str(
+                                global_y) + "." + output_format
+
+                            if self.config["calibration"]["resize"]:
+                                patch = cv2.resize(patch, (self.config["patch_size"],self.config["patch_size"]))
+
+                            patch = Image.fromarray(patch)
+                            patch.save(os.path.join(self.output_path, label, file_name), format=output_format)
+
+                            patch_dict.update(
+                                {patch_nb: {"x_pos": global_x, "y_pos": global_y, "patch_size": patch_size_px_x,
+                                            "resized": self.config["calibration"]["resize"], "label": label,
+                                            "slide_name": slide_name,
+                                            "patch_path": os.path.join(label, file_name)}})
+
+                            patch_nb += 1
+                    if stop_x:
+                        break
+                if stop_y:
+                    break
+
+        return patch_dict
 
     def extract_patches(self, tile_dict, level, annotations, label_dict, overlap=0, annotation_overlap=0,
                         patch_size=256,
@@ -316,13 +403,13 @@ class WSIHandler:
                 # overlap separately  for annotated and unannotated patches
                 if tile_dict[tile_key]["annotated"]:
                     px_overlap = int(patch_size * annotation_overlap)
-                    rows = int(np.ceil((tile_size + annotation_overlap) / (patch_size - px_overlap)))
-                    cols = int(np.ceil((tile_size + annotation_overlap) / (patch_size - px_overlap)))
+                    rows = int(np.ceil((tile_size) / (patch_size - px_overlap)))
+                    cols = int(np.ceil((tile_size) / (patch_size - px_overlap)))
 
                 else:
                     px_overlap = int(patch_size * overlap)
-                    rows = int(np.ceil((tile_size + overlap) / (patch_size - px_overlap)))
-                    cols = int(np.ceil((tile_size + overlap) / (patch_size - px_overlap)))
+                    rows = int(np.ceil((tile_size) / (patch_size - px_overlap)))
+                    cols = int(np.ceil((tile_size) / (patch_size - px_overlap)))
 
                 # create annotation mask
                 if annotations is not None:
@@ -499,25 +586,26 @@ class WSIHandler:
                        slide_name=slide_name,
                        label_dict=self.config["label_dict"], annotated=annotated)
 
-        self.extract_calibrated_patches(tile_dict,
-                                          level,
-                                          self.annotation_dict,
-                                          self.config["label_dict"],
-                                          overlap=self.config["overlap"],
-                                          annotation_overlap=self.config["annotation_overlap"],
-                                          patch_size=self.config["patch_size"],
-                                          slide_name=slide_name,
-                                          output_format=self.config["output_format"])
-
-        patch_dict = self.extract_patches(tile_dict,
-                                          level,
-                                          self.annotation_dict,
-                                          self.config["label_dict"],
-                                          overlap=self.config["overlap"],
-                                          annotation_overlap=self.config["annotation_overlap"],
-                                          patch_size=self.config["patch_size"],
-                                          slide_name=slide_name,
-                                          output_format=self.config["output_format"])
+        # Calibrated or non calibrated patch sizes
+        if self.config["calibration"]["use_non_pixel_lengths"]:
+            patch_dict = self.extract_calibrated_patches(tile_dict,
+                                                         level,
+                                                         self.annotation_dict,
+                                                         self.config["label_dict"],
+                                                         overlap=self.config["overlap"],
+                                                         annotation_overlap=self.config["annotation_overlap"],
+                                                         slide_name=slide_name,
+                                                         output_format=self.config["output_format"])
+        else:
+            patch_dict = self.extract_patches(tile_dict,
+                                              level,
+                                              self.annotation_dict,
+                                              self.config["label_dict"],
+                                              overlap=self.config["overlap"],
+                                              annotation_overlap=self.config["annotation_overlap"],
+                                              patch_size=self.config["patch_size"],
+                                              slide_name=slide_name,
+                                              output_format=self.config["output_format"])
 
         self.save_patch_configuration(patch_dict)
 
