@@ -34,7 +34,7 @@ import openslide
 # Custom
 import tissue_detection
 
-_MULTIPROCESS = True
+_MULTIPROCESS = False
 
 
 class WSIHandler:
@@ -50,9 +50,13 @@ class WSIHandler:
         self.annotation_dict = None
         self.config = self.load_config(config_path)
         self.annotated_only = self.config["save_annotated_only"]
+        self.scanner = None
+
+        self.res_x = None
+        self.res_y = None
 
     def load_config(self, config_path):
-        assert os.path.exists(config_path), "Cannot find "+config_path
+        assert os.path.exists(config_path), "Cannot find " + config_path
         with open(config_path) as json_file:
             config = json.load(json_file)
 
@@ -75,7 +79,8 @@ class WSIHandler:
         if self.levels < self.config["processing_level"]:
             print("###############################################")
             print("WARNING: Processing level above highest available slide level. Maximum slide level is " + str(
-            self.levels) + ", processing level is " + str(self.config["processing_level"]) + ". Setting processing level to "+ str(self.levels))
+                self.levels) + ", processing level is " + str(
+                self.config["processing_level"]) + ". Setting processing level to " + str(self.levels))
             print("###############################################")
             processing_level = self.levels
 
@@ -247,6 +252,41 @@ class WSIHandler:
 
         self.output_path = slide_path
 
+    def normalize_tile_size(self, tile):
+
+        normalizing_factor_x = self.config["microns_per_pixel"]/self.res_x
+        normalizing_factor_y = self.config["microns_per_pixel"] / self.res_y
+
+        tile_height = tile.shape[1]
+        tile_width = tile.shape[0]
+
+        scaled_height = int(tile_height/normalizing_factor_y)
+        scaled_width = int(tile_width/normalizing_factor_x)
+
+        resized_tile = cv2.resize(tile, (scaled_width, scaled_height))
+        new_tile_size = scaled_height
+
+        return resized_tile, new_tile_size
+
+    def extract_calibrated_patches(self, tile_dict, level, annotations, label_dict, overlap=0, annotation_overlap=0,
+                        patch_size=256,
+                        slide_name=None, output_format="png"):
+
+        scaling_factor = int(self.slide.level_downsamples[level])
+
+        for tile_key in tile_dict:
+            tile_x = tile_dict[tile_key]["x"] * scaling_factor
+            tile_y = tile_dict[tile_key]["y"] * scaling_factor
+
+            tile_size_px = tile_dict[tile_key]["size"] * scaling_factor
+            tile_size_mu_m = tile_size_px * self.res_x
+
+            tile = np.array(self.slide.read_region((tile_x, tile_y), level=0, size=(tile_size_px, tile_size_px)))
+            tile = tile[:, :, 0:3]
+
+
+
+
     def extract_patches(self, tile_dict, level, annotations, label_dict, overlap=0, annotation_overlap=0,
                         patch_size=256,
                         slide_name=None, output_format="png"):
@@ -267,6 +307,11 @@ class WSIHandler:
                 tile_x = tile_dict[tile_key]["x"] * scaling_factor
                 tile_y = tile_dict[tile_key]["y"] * scaling_factor
                 tile_size = tile_dict[tile_key]["size"] * scaling_factor
+                tile = np.array(self.slide.read_region((tile_x, tile_y), level=0, size=(tile_size, tile_size)))
+                tile = tile[:, :, 0:3]
+
+                # resize tiles to match desired output mpp
+                tile, tile_size = self.normalize_tile_size(tile)
 
                 # overlap separately  for annotated and unannotated patches
                 if tile_dict[tile_key]["annotated"]:
@@ -279,13 +324,11 @@ class WSIHandler:
                     rows = int(np.ceil((tile_size + overlap) / (patch_size - px_overlap)))
                     cols = int(np.ceil((tile_size + overlap) / (patch_size - px_overlap)))
 
-                tile = np.array(self.slide.read_region((tile_x, tile_y), level=0, size=(tile_size, tile_size)))
-                tile = tile[:, :, 0:3]
-
                 # create annotation mask
                 if annotations is not None:
                     # Translate from world coordinates to tile coordinates
-                    tile_annotation_list = [[[point[0] - tile_x, point[1] - tile_y] for point in annotations[polygon]] for
+                    tile_annotation_list = [[[point[0] - tile_x, point[1] - tile_y] for point in annotations[polygon]]
+                                            for
                                             polygon in annotations]
 
                     # Create mask from polygons
@@ -321,7 +364,8 @@ class WSIHandler:
                         # check if the patch is annotated
                         annotated = False
                         if annotations is not None:
-                            patch_mask = tile_annotation_mask[patch_y:patch_y + patch_size, patch_x:patch_x + patch_size]
+                            patch_mask = tile_annotation_mask[patch_y:patch_y + patch_size,
+                                         patch_x:patch_x + patch_size]
                             label = self.check_for_label(label_dict, patch_mask)
                             if label is not None:
                                 if self.config["label_dict"][label]["annotated"]:
@@ -334,7 +378,8 @@ class WSIHandler:
                             if self.annotated_only and annotated or not self.annotated_only:
                                 if slide_name is not None:
 
-                                    file_name = slide_name + "_" + str(global_x) + "_" + str(global_y) + "." + output_format
+                                    file_name = slide_name + "_" + str(global_x) + "_" + str(
+                                        global_y) + "." + output_format
                                 else:
                                     file_name = str(patch_nb) + "_" + str(global_x) + "_" + str(
                                         global_y) + "." + output_format
@@ -386,11 +431,46 @@ class WSIHandler:
         file_name = os.path.join(self.config["output_path"], slide_name, "thumbnail." + output_format)
         plt.imsave(file_name, img, format=output_format)
 
+    def init_generic_tiff(self):
+
+        unit_dict = {"milimeter": 1000, "centimeter": 10000, "meter": 1000000}
+        self.scanner = "generic-tiff"
+
+        assert self.slide.properties["tiff.ResolutionUnit"] in unit_dict.keys(), \
+            "Unknown unit " + self.slide.properties["tiff.ResolutionUnit"]
+
+        factor = unit_dict[self.slide.properties["tiff.ResolutionUnit"]]
+
+        # convert to mpp
+        self.res_x = factor / float(self.slide.properties["tiff.XResolution"])
+        self.res_y = factor / float(self.slide.properties["tiff.YResolution"])
+
+    def init_aperio(self):
+        self.scanner = "aperio"
+
+        self.res_x = float(self.slide.properties["openslide.mpp-x"])
+        self.res_y = float(self.slide.properties["openslide.mpp-y"])
+
+    def init_patch_calibration(self):
+
+        properties = list(self.slide.properties)
+
+        # check scanner type
+        if self.slide.properties["openslide.vendor"] == "aperio":
+            self.init_aperio()
+        elif self.slide.properties["openslide.vendor"] == "generic-tiff":
+            self.init_generic_tiff()
+
+        # future vendors
+        # elif ...
+
+        assert self.scanner, "Not integrated scanner type, aborting"
+
     def process_slide(self, slide):
         slide_name = os.path.basename(slide)
         slide_name = os.path.splitext(slide_name)[0]
 
-        print("Found annotation for slide", slide_name, "process id is", os.getpid())
+        print("Processing", slide_name, "process id is", os.getpid())
 
         annotation_path = os.path.join(self.config["annotation_dir"],
                                        slide_name + "." + self.config["annotation_file_format"])
@@ -404,6 +484,7 @@ class WSIHandler:
 
         slide_path = os.path.join(self.config["slides_dir"], slide)
         level = self.load_slide(slide_path)
+        self.init_patch_calibration()
 
         mask, level = self.apply_tissue_detection(level=level,
                                                   show=self.config["show_mode"])
@@ -417,6 +498,16 @@ class WSIHandler:
         self.make_dirs(output_path=self.config["output_path"],
                        slide_name=slide_name,
                        label_dict=self.config["label_dict"], annotated=annotated)
+
+        self.extract_calibrated_patches(tile_dict,
+                                          level,
+                                          self.annotation_dict,
+                                          self.config["label_dict"],
+                                          overlap=self.config["overlap"],
+                                          annotation_overlap=self.config["annotation_overlap"],
+                                          patch_size=self.config["patch_size"],
+                                          slide_name=slide_name,
+                                          output_format=self.config["output_format"])
 
         patch_dict = self.extract_patches(tile_dict,
                                           level,
@@ -489,7 +580,7 @@ class WSIHandler:
 
 if __name__ == "__main__":
     parser = ArgumentParser()
-    parser.add_argument("--config_path", default=script_dir+"/resources/config.json")
+    parser.add_argument("--config_path", default=script_dir + "/resources/config.json")
     args = parser.parse_args()
 
     slide_handler = WSIHandler(config_path=args.config_path)
