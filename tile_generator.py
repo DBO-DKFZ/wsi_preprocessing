@@ -167,8 +167,8 @@ class WSIHandler:
         rows, row_residue = divmod(tissue_mask.shape[0], tile_size)
         cols, col_residue = divmod(tissue_mask.shape[1], tile_size)
 
-
-        colored = cv2.cvtColor(tissue_mask, cv2.COLOR_GRAY2RGB)
+        if self.config["use_tissue_detection"]:
+            colored = cv2.cvtColor(tissue_mask, cv2.COLOR_GRAY2RGB)
 
         if self.annotation_dict is not None:
             annotation_mask = np.zeros(shape=(tissue_mask.shape[0], tissue_mask.shape[1]))
@@ -200,17 +200,17 @@ class WSIHandler:
                 if tissue_coverage >= min_coverage:
                     relevant_tiles_dict.update({tile_nb: {"x": col * tile_size, "y": row * tile_size,
                                                           "size": tile_size, "level": level, "annotated": annotated}})
-
-                    if annotated:
-                        tissue_mask = cv2.rectangle(colored, (col * tile_size, row * tile_size),
-                                                    (col * tile_size + tile_size, row * tile_size + tile_size),
-                                                    (0, 255, 0),
-                                                    3)
-                    else:
-                        tissue_mask = cv2.rectangle(colored, (col * tile_size, row * tile_size),
-                                                    (col * tile_size + tile_size, row * tile_size + tile_size),
-                                                    (255, 0, 0),
-                                                    1)
+                    if self.config["use_tissue_detection"]:
+                        if annotated:
+                            tissue_mask = cv2.rectangle(colored, (col * tile_size, row * tile_size),
+                                                        (col * tile_size + tile_size, row * tile_size + tile_size),
+                                                        (0, 255, 0),
+                                                        3)
+                        else:
+                            tissue_mask = cv2.rectangle(colored, (col * tile_size, row * tile_size),
+                                                        (col * tile_size + tile_size, row * tile_size + tile_size),
+                                                        (255, 0, 0),
+                                                        1)
                     tile_nb += 1
 
         if show:
@@ -562,8 +562,8 @@ class WSIHandler:
 
         annotation_path = os.path.join(self.config["annotation_dir"],
                                        slide_name + "." + self.config["annotation_file_format"])
-
         if os.path.exists(annotation_path):
+
             annotated = True
             self.annotation_dict = self.load_annotation(annotation_path)
         else:
@@ -628,8 +628,10 @@ class WSIHandler:
             for file in Path(self.config["slides_dir"]).resolve().glob('**/*' + extension):
                 slide_list.append(file)
 
-        annotation_list = os.listdir(self.config["annotation_dir"])
-        self.annotation_list = [os.path.splitext(annotation)[0] for annotation in annotation_list]
+        self.annotation_list = []
+        if os.path.exists(self.config["annotation_dir"]):
+            annotation_list = os.listdir(self.config["annotation_dir"])
+            self.annotation_list = [os.path.splitext(annotation)[0] for annotation in annotation_list]
 
         missing_annotations = []
         annotated_slides = [name if os.path.splitext(os.path.basename(name))[0] in self.annotation_list
@@ -642,6 +644,9 @@ class WSIHandler:
         print("###############################################")
         print("Found", len(missing_annotations), "unannotated slides")
         print("###############################################")
+        if not self.config["use_tissue_detection"]:
+            print("Tissue detection deactivated")
+            print("###############################################")
 
         if self.config["skip_unlabeled_slides"]:
             slide_list = annotated_slides

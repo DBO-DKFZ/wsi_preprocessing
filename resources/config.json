@@ -11,10 +11,10 @@
                   "patch_size_microns": 64,
                   "resize": true
   },
-  "slides_dir": "D:\\datasets\\test_tumors\\tiff",
-  "annotation_dir": "E:\\camelyon17",
+  "slides_dir": "C:\\Development\\wsi_preprocessing\\resources\\test_slide\\svs_slides",
+  "annotation_dir": "",
   "annotation_file_format": "geojson",
-  "output_path": "E:\\camelyon17\\output\\calibration_test",
+  "output_path": "C:\\Users\\Martin\\Desktop\\test_output",
   "skip_unlabeled_slides": false,
   "save_annotated_only": false,
   "output_format":"jpeg",
