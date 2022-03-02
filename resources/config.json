@@ -1,4 +1,4 @@
-{
+{ "use_tissue_detection": false,
   "tissue_coverage": 0.9,
   "processing_level": 5,
   "blocked_threads": 0,

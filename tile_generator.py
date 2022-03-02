@@ -167,6 +167,7 @@ class WSIHandler:
         rows, row_residue = divmod(tissue_mask.shape[0], tile_size)
         cols, col_residue = divmod(tissue_mask.shape[1], tile_size)
 
+
         colored = cv2.cvtColor(tissue_mask, cv2.COLOR_GRAY2RGB)
 
         if self.annotation_dict is not None:
@@ -573,8 +574,12 @@ class WSIHandler:
         level = self.load_slide(slide_path)
         self.init_patch_calibration()
 
-        mask, level = self.apply_tissue_detection(level=level,
-                                                  show=self.config["show_mode"])
+        if self.config["use_tissue_detection"]:
+            mask, level = self.apply_tissue_detection(level=level,
+                                                      show=self.config["show_mode"])
+        else:
+            mask = np.ones(shape=self.slide.level_dimensions[level])
+
         tile_size = self.determine_tile_size(level)
 
         tile_dict = self.get_relevant_tiles(mask, tile_size=tile_size,
