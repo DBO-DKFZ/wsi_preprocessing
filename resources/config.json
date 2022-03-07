@@ -1,5 +1,6 @@
-{
-  "tissue_coverage": 0.75,
+
+{ "use_tissue_detection": true,
+  "tissue_coverage": 0.9,
   "processing_level": 5,
   "blocked_threads": 0,
   "patches_per_tile": 8,
