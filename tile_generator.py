@@ -579,7 +579,7 @@ class WSIHandler:
                 mask, level = self.apply_tissue_detection(level=level,
                                                           show=self.config["show_mode"])
             else:
-                mask = np.ones(shape=self.slide.level_dimensions[level])
+                mask = np.ones(shape=self.slide.level_dimensions[level]).transpose()
 
             tile_size = self.determine_tile_size(level)
 
