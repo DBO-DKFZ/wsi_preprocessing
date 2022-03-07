@@ -4,6 +4,7 @@ import sys
 from pathlib import Path
 from argparse import ArgumentParser
 import time
+from itertools import repeat
 
 # Advanced
 import xml.etree.ElementTree as ET
@@ -554,8 +555,7 @@ class WSIHandler:
 
         assert self.scanner, "Not integrated scanner type, aborting"
 
-    def process_slide(self, slide):
-
+    def process_slide(self, slide, q):
         slide_name = os.path.basename(slide)
         slide_name = os.path.splitext(slide_name)[0]
         try:
@@ -615,16 +615,19 @@ class WSIHandler:
 
             self.save_patch_configuration(patch_dict)
 
-        except Exception as e:
-            print("Error in slide", slide_name, "error is:", e)
-        try:
+
+
             self.save_thumbnail(mask, level=level,
                                 slide_name=slide_name,
                                 output_format=self.config["output_format"])
             print("Finished slide ", slide_name)
+        except Exception as e:
+            print("Error in slide", slide_name, "error is:", e)
+            msg = "Slide_name:" + str(slide_name) + "_error is " + str(e)
+            q.put(msg)
 
-        except BaseException as e:
-            print("Error in writing Thumbnailof slide", slide_name, ", error is:", e)
+            print("Skipped slide ", slide_name)
+
 
     def slides2patches(self):
 
@@ -662,9 +665,17 @@ class WSIHandler:
         if not len(slide_list) == 0:
             slide_list = sorted(slide_list)
             if _MULTIPROCESS:
+                manager = multiprocessing.Manager()
+                q = manager.Queue()
+
                 available_threads = multiprocessing.cpu_count() - self.config["blocked_threads"]
                 pool = multiprocessing.Pool(available_threads)
-                pool.map(self.process_slide, slide_list)
+                pool.apply_async(self.listener, (q,))
+                pool.starmap(self.process_slide, zip(slide_list, repeat(q)))
+
+                q.put('kill')
+                pool.close()
+                pool.join()
 
             else:
                 for slide in slide_list:
@@ -682,6 +693,17 @@ class WSIHandler:
             print("WARNING: No slides processed!")
             print("###############################################")
 
+    def listener(self, q):
+        '''listens for messages on the q, writes to file. '''
+        log_path = os.path.join(self.config["output_path"], "error_log.txt")
+        with open(log_path, 'w') as f:
+            while True:
+                m = q.get()
+                if m == 'kill':
+                    f.write('killed')
+                    break
+                f.write(str(m) + '\n')
+                f.flush()
 
 if __name__ == "__main__":
     parser = ArgumentParser()
