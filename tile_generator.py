@@ -35,7 +35,7 @@ import openslide
 # Custom
 import tissue_detection
 
-_MULTIPROCESS = True
+_MULTIPROCESS = False
 
 
 class WSIHandler:
@@ -579,7 +579,7 @@ class WSIHandler:
                 mask, level = self.apply_tissue_detection(level=level,
                                                           show=self.config["show_mode"])
             else:
-                mask = np.ones(shape=self.slide.level_dimensions[level])
+                mask = np.ones(shape=self.slide.level_dimensions[level]).transpose()
 
             tile_size = self.determine_tile_size(level)
 
@@ -679,7 +679,7 @@ class WSIHandler:
 
             else:
                 for slide in slide_list:
-                    self.process_slide(slide)
+                    self.process_slide(slide, None)
 
             # Save used config file
             file = os.path.join(self.config["output_path"], "config.json")
