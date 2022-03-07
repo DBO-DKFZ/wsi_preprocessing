@@ -555,72 +555,79 @@ class WSIHandler:
         assert self.scanner, "Not integrated scanner type, aborting"
 
     def process_slide(self, slide):
+
         slide_name = os.path.basename(slide)
         slide_name = os.path.splitext(slide_name)[0]
+        try:
+            print("Processing", slide_name, "process id is", os.getpid())
 
-        print("Processing", slide_name, "process id is", os.getpid())
+            annotation_path = os.path.join(self.config["annotation_dir"],
+                                           slide_name + "." + self.config["annotation_file_format"])
+            if os.path.exists(annotation_path):
 
-        annotation_path = os.path.join(self.config["annotation_dir"],
-                                       slide_name + "." + self.config["annotation_file_format"])
-        if os.path.exists(annotation_path):
+                annotated = True
+                self.annotation_dict = self.load_annotation(annotation_path)
+            else:
+                annotated = False
+                self.annotation_dict = None
 
-            annotated = True
-            self.annotation_dict = self.load_annotation(annotation_path)
-        else:
-            annotated = False
-            self.annotation_dict = None
+            slide_path = os.path.join(self.config["slides_dir"], slide)
+            level = self.load_slide(slide_path)
+            self.init_patch_calibration()
 
-        slide_path = os.path.join(self.config["slides_dir"], slide)
-        level = self.load_slide(slide_path)
-        self.init_patch_calibration()
+            if self.config["use_tissue_detection"]:
+                mask, level = self.apply_tissue_detection(level=level,
+                                                          show=self.config["show_mode"])
+            else:
+                mask = np.ones(shape=self.slide.level_dimensions[level])
 
-        if self.config["use_tissue_detection"]:
-            mask, level = self.apply_tissue_detection(level=level,
-                                                      show=self.config["show_mode"])
-        else:
-            mask = np.ones(shape=self.slide.level_dimensions[level])
+            tile_size = self.determine_tile_size(level)
 
-        tile_size = self.determine_tile_size(level)
+            tile_dict = self.get_relevant_tiles(mask, tile_size=tile_size,
+                                                min_coverage=self.config["tissue_coverage"],
+                                                level=level,
+                                                show=self.config["show_mode"])
 
-        tile_dict = self.get_relevant_tiles(mask, tile_size=tile_size,
-                                            min_coverage=self.config["tissue_coverage"],
-                                            level=level,
-                                            show=self.config["show_mode"])
+            self.make_dirs(output_path=self.config["output_path"],
+                           slide_name=slide_name,
+                           label_dict=self.config["label_dict"], annotated=annotated)
 
-        self.make_dirs(output_path=self.config["output_path"],
-                       slide_name=slide_name,
-                       label_dict=self.config["label_dict"], annotated=annotated)
+            # Calibrated or non calibrated patch sizes
+            if self.config["calibration"]["use_non_pixel_lengths"]:
+                patch_dict = self.extract_calibrated_patches(tile_dict,
+                                                             level,
+                                                             self.annotation_dict,
+                                                             self.config["label_dict"],
+                                                             overlap=self.config["overlap"],
+                                                             annotation_overlap=self.config["annotation_overlap"],
+                                                             slide_name=slide_name,
+                                                             output_format=self.config["output_format"])
+            else:
+                patch_dict = self.extract_patches(tile_dict,
+                                                  level,
+                                                  self.annotation_dict,
+                                                  self.config["label_dict"],
+                                                  overlap=self.config["overlap"],
+                                                  annotation_overlap=self.config["annotation_overlap"],
+                                                  patch_size=self.config["patch_size"],
+                                                  slide_name=slide_name,
+                                                  output_format=self.config["output_format"])
 
-        # Calibrated or non calibrated patch sizes
-        if self.config["calibration"]["use_non_pixel_lengths"]:
-            patch_dict = self.extract_calibrated_patches(tile_dict,
-                                                         level,
-                                                         self.annotation_dict,
-                                                         self.config["label_dict"],
-                                                         overlap=self.config["overlap"],
-                                                         annotation_overlap=self.config["annotation_overlap"],
-                                                         slide_name=slide_name,
-                                                         output_format=self.config["output_format"])
-        else:
-            patch_dict = self.extract_patches(tile_dict,
-                                              level,
-                                              self.annotation_dict,
-                                              self.config["label_dict"],
-                                              overlap=self.config["overlap"],
-                                              annotation_overlap=self.config["annotation_overlap"],
-                                              patch_size=self.config["patch_size"],
-                                              slide_name=slide_name,
-                                              output_format=self.config["output_format"])
+            self.save_patch_configuration(patch_dict)
 
-        self.save_patch_configuration(patch_dict)
+        except Exception as e:
+            print("Error in slide", slide_name, "error is:", e)
+        try:
+            self.save_thumbnail(mask, level=level,
+                                slide_name=slide_name,
+                                output_format=self.config["output_format"])
+            print("Finished slide ", slide_name)
 
-        self.save_thumbnail(mask, level=level,
-                            slide_name=slide_name,
-                            output_format=self.config["output_format"])
-
-        print("Finished slide ", slide_name)
+        except BaseException as e:
+            print("Error in writing Thumbnailof slide", slide_name, ", error is:", e)
 
     def slides2patches(self):
+
         extensions = [".tif", ".svs"]
         slide_list = []
 
