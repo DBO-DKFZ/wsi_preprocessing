@@ -398,9 +398,6 @@ class WSIHandler:
                 tile = np.array(self.slide.read_region((tile_x, tile_y), level=0, size=(tile_size, tile_size)))
                 tile = tile[:, :, 0:3]
 
-                # resize tiles to match desired output mpp
-                tile, tile_size = self.normalize_tile_size(tile)
-
                 # overlap separately  for annotated and unannotated patches
                 if tile_dict[tile_key]["annotated"]:
                     px_overlap = int(patch_size * annotation_overlap)
