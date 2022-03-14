@@ -570,7 +570,9 @@ class WSIHandler:
 
             slide_path = os.path.join(self.config["slides_dir"], slide)
             level = self.load_slide(slide_path)
-            self.init_patch_calibration()
+
+            if self.config["calibration"]["use_non_pixel_lengths"]:
+                self.init_patch_calibration()
 
             if self.config["use_tissue_detection"]:
                 mask, level = self.apply_tissue_detection(level=level,
