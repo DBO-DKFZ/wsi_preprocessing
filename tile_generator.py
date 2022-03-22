@@ -494,15 +494,15 @@ class WSIHandler:
 
         return patch_dict
 
-    def save_patch_configuration(self, patch_dict, metadata_format):
+    def export_dict(self, dict, metadata_format, filename):
         
         if metadata_format == "json":
-            file = os.path.join(self.output_path, "tile_information.json")
+            file = os.path.join(self.output_path, filename + ".json")
             with open(file, "w") as json_file:
-                json.dump(patch_dict, json_file, indent=4)
+                json.dump(dict, json_file, indent=4)
         elif metadata_format == "csv":
-            df = pd.DataFrame(patch_dict.values())
-            file = os.path.join(self.output_path, "tile_information.csv")
+            df = pd.DataFrame(dict.values())
+            file = os.path.join(self.output_path, filename + ".csv")
             df.to_csv(file, index=False)
         else:
             print("Could not write metadata. Metadata format has to be json or csv")
@@ -627,7 +627,7 @@ class WSIHandler:
                                                   slide_name=slide_name,
                                                   output_format=self.config["output_format"])
 
-            self.save_patch_configuration(patch_dict, self.config["metadata_format"])
+            self.export_dict(patch_dict, self.config["metadata_format"], "tile_information")
 
         except Exception as e:
             print("Error in slide", slide_name, "error is:", e)
@@ -683,6 +683,34 @@ class WSIHandler:
             else:
                 for slide in slide_list:
                     self.process_slide(slide)
+
+            # Save label proportion per slide
+            labels = list(self.config["label_dict"].keys())
+            if len(labels) == 2:
+                slide_dict = {}
+                for i in range(len(slide_list)):
+                    slide = slide_list[i]
+                    slide_name = os.path.basename(slide)
+                    slide_name = os.path.splitext(slide_name)[0]
+                    slide_path = os.path.join(self.config["output_path"], slide_name)
+                    # Assume label 1 is tumor label
+                    n_tumor = len(os.listdir(os.path.join(slide_path, labels[1])))
+                    n_other = len(os.listdir(os.path.join(slide_path, labels[0])))
+                    n_total = n_tumor + n_other
+                    frac = n_tumor / n_total * 100
+                    slide_dict.update(
+                        {i: {"slide_name": slide_name,
+                            "n_tumor": n_tumor,
+                            "n_other": n_other,
+                            "n_total": n_total,
+                            "frac": frac,
+                            }
+                        }
+                    )
+                self.output_path = self.config["output_path"]
+                self.export_dict(slide_dict, self.config["metadata_format"], "slide_information")
+            else:
+                print("Can only write slide information for binary classification problem")
 
             # Save used config file
             file = os.path.join(self.config["output_path"], "config.json")
