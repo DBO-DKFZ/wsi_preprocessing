@@ -8,6 +8,7 @@ import time
 # Advanced
 import xml.etree.ElementTree as ET
 import json
+import pandas as pd
 import multiprocessing
 from tqdm import tqdm
 
@@ -362,11 +363,15 @@ class WSIHandler:
                             patch.save(os.path.join(self.output_path, label, file_name), format=output_format)
 
                             patch_dict.update(
-                                {patch_nb: {"x_pos": global_x, "y_pos": global_y, "patch_size": patch_size_px_x,
-                                            "resized": self.config["calibration"]["resize"], "label": label,
+                                {patch_nb: {"patch_path": os.path.join(label, file_name),
+                                            "label": label,
+                                            "x_pos": global_x,
+                                            "y_pos": global_y, 
+                                            "patch_size": patch_size_px_x,
+                                            "resized": self.config["calibration"]["resize"], 
                                             "slide_name": slide_name,
-                                            "patch_path": os.path.join(label, file_name)}})
-
+                                            }
+                                })
                             patch_nb += 1
                     if stop_x:
                         break
@@ -473,10 +478,14 @@ class WSIHandler:
                                 patch.save(os.path.join(self.output_path, label, file_name), format=output_format)
 
                                 patch_dict.update(
-                                    {patch_nb: {"x_pos": global_x, "y_pos": global_y, "patch_size": patch_size,
-                                                "label": label, "slide_name": slide_name,
-                                                "patch_path": os.path.join(label, file_name)}})
-
+                                    {patch_nb: {"patch_path": os.path.join(label, file_name),
+                                                "label": label,
+                                                "x_pos": global_x,
+                                                "y_pos": global_y,
+                                                "patch_size": patch_size,
+                                                "slide_name": slide_name,
+                                                }
+                                    })
                                 patch_nb += 1
                         if stop_x:
                             break
@@ -485,12 +494,18 @@ class WSIHandler:
 
         return patch_dict
 
-    def save_patch_configuration(self, patch_dict):
-
-        file = os.path.join(self.output_path, "tile_information.json")
-
-        with open(file, "w") as json_file:
-            json.dump(patch_dict, json_file, indent=4)
+    def save_patch_configuration(self, patch_dict, metadata_format):
+        
+        if metadata_format == "json":
+            file = os.path.join(self.output_path, "tile_information.json")
+            with open(file, "w") as json_file:
+                json.dump(patch_dict, json_file, indent=4)
+        elif metadata_format == "csv":
+            df = pd.DataFrame(patch_dict.values())
+            file = os.path.join(self.output_path, "tile_information.csv")
+            df.to_csv(file, index=False)
+        else:
+            print("Could not write metadata. Metadata format has to be json or csv")
 
     def save_thumbnail(self, mask, slide_name, level, output_format="png"):
 
@@ -612,7 +627,7 @@ class WSIHandler:
                                                   slide_name=slide_name,
                                                   output_format=self.config["output_format"])
 
-            self.save_patch_configuration(patch_dict)
+            self.save_patch_configuration(patch_dict, self.config["metadata_format"])
 
         except Exception as e:
             print("Error in slide", slide_name, "error is:", e)

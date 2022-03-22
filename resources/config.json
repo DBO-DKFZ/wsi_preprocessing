@@ -1,4 +1,5 @@
-{ "use_tissue_detection": true,
+{
+  "use_tissue_detection": true,
   "tissue_coverage": 0.9,
   "processing_level": 5,
   "blocked_threads": 0,
@@ -7,9 +8,9 @@
   "annotation_overlap": 0.25,
   "patch_size": 256,
   "calibration": {
-                  "use_non_pixel_lengths": true,
-                  "patch_size_microns": 64,
-                  "resize": true
+    "use_non_pixel_lengths": true,
+    "patch_size_microns": 64,
+    "resize": true
   },
   "slides_dir": "C:\\Development\\wsi_preprocessing\\resources\\test_slide\\svs_slides",
   "annotation_dir": "",
@@ -17,7 +18,8 @@
   "output_path": "C:\\Users\\Martin\\Desktop\\test_output",
   "skip_unlabeled_slides": false,
   "save_annotated_only": false,
-  "output_format":"jpeg",
+  "output_format": "jpeg",
+  "metadata_format": "json",
   "show_mode": false,
   "label_dict": {
     "non_tumor": {

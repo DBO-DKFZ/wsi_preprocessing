@@ -1,7 +1,9 @@
 import os
 from pathlib import Path
+from argparse import ArgumentParser
 import json
 
+script_dir = os.path.dirname(os.path.realpath(__file__))
 
 def main(config_path):
     with open(config_path) as json_file:
@@ -26,5 +28,8 @@ def main(config_path):
 
 
 if __name__ == "__main__":
-    config_path = 'resources/config.json'
-    main(config_path)
+    parser = ArgumentParser()
+    parser.add_argument("--config_path", default=script_dir + "/resources/config.json")
+    args = parser.parse_args()
+
+    main(args.config_path)
