@@ -700,9 +700,9 @@ class WSIHandler:
                     frac = n_tumor / n_total * 100
                     slide_dict.update(
                         {i: {"slide_name": slide_name,
-                            "n_tumor": n_tumor,
-                            "n_other": n_other,
-                            "n_total": n_total,
+                            labels[1]: n_tumor,
+                            labels[0]: n_other,
+                            "total": n_total,
                             "frac": frac,
                             }
                         }
