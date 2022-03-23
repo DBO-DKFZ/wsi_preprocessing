@@ -363,13 +363,13 @@ class WSIHandler:
                             patch.save(os.path.join(self.output_path, label, file_name), format=output_format)
 
                             patch_dict.update(
-                                {patch_nb: {"patch_path": os.path.join(label, file_name),
+                                {patch_nb: {"slide_name": slide_name,
+                                            "patch_path": os.path.join(label, file_name),
                                             "label": label,
                                             "x_pos": global_x,
                                             "y_pos": global_y, 
                                             "patch_size": patch_size_px_x,
-                                            "resized": self.config["calibration"]["resize"], 
-                                            "slide_name": slide_name,
+                                            "resized": self.config["calibration"]["resize"],
                                             }
                                 })
                             patch_nb += 1
@@ -478,12 +478,12 @@ class WSIHandler:
                                 patch.save(os.path.join(self.output_path, label, file_name), format=output_format)
 
                                 patch_dict.update(
-                                    {patch_nb: {"patch_path": os.path.join(label, file_name),
+                                    {patch_nb: {"slide_name": slide_name,
+                                                "patch_path": os.path.join(label, file_name),
                                                 "label": label,
                                                 "x_pos": global_x,
                                                 "y_pos": global_y,
                                                 "patch_size": patch_size,
-                                                "slide_name": slide_name,
                                                 }
                                     })
                                 patch_nb += 1
