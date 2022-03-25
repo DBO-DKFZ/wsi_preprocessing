@@ -1,23 +1,18 @@
 # System
-import os
-import sys
-from pathlib import Path
-from argparse import ArgumentParser
-import time
-
-# Advanced
-import xml.etree.ElementTree as ET
 import json
 import multiprocessing
-from tqdm import tqdm
+import os
+# Advanced
+import xml.etree.ElementTree as ET
+from argparse import ArgumentParser
+from pathlib import Path
 
+import cv2
+import matplotlib.pyplot as plt
 # Numpy
 import numpy as np
-import matplotlib.pyplot as plt
-
 # Image Processing
 from PIL import Image
-import cv2
 
 # # Fix to get the dlls to load properly under python >= 3.8 and windows
 script_dir = os.path.dirname(os.path.realpath(__file__))
@@ -356,7 +351,7 @@ class WSIHandler:
                                 global_y) + "." + output_format
 
                             if self.config["calibration"]["resize"]:
-                                patch = cv2.resize(patch, (self.config["patch_size"],self.config["patch_size"]))
+                                patch = cv2.resize(patch, (self.config["patch_size"], self.config["patch_size"]))
 
                             patch = Image.fromarray(patch)
                             patch.save(os.path.join(self.output_path, label, file_name), format=output_format)
@@ -623,7 +618,7 @@ class WSIHandler:
             print("Finished slide ", slide_name)
 
         except BaseException as e:
-            print("Error in writing Thumbnailof slide", slide_name, ", error is:", e)
+            print("Error in writing Thumbnail of slide", slide_name, ", error is:", e)
 
     def slides2patches(self):
 
