@@ -204,12 +204,12 @@ class WSIHandler:
                                                           "size": tile_size, "level": level, "annotated": annotated}})
                     if self.config["use_tissue_detection"]:
                         if annotated:
-                            tissue_mask = cv2.rectangle(colored, (col * tile_size, row * tile_size),
+                            colored = cv2.rectangle(colored, (col * tile_size, row * tile_size),
                                                         (col * tile_size + tile_size, row * tile_size + tile_size),
                                                         (0, 255, 0),
                                                         3)
                         else:
-                            tissue_mask = cv2.rectangle(colored, (col * tile_size, row * tile_size),
+                            colored = cv2.rectangle(colored, (col * tile_size, row * tile_size),
                                                         (col * tile_size + tile_size, row * tile_size + tile_size),
                                                         (255, 0, 0),
                                                         1)
