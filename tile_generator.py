@@ -32,7 +32,7 @@ import openslide
 # Custom
 import tissue_detection
 
-_MULTIPROCESS = True
+_MULTIPROCESS = False
 
 
 class WSIHandler:
@@ -178,6 +178,9 @@ class WSIHandler:
             for polygon in scaled_list:
                 cv2.fillPoly(annotation_mask, [np.array(polygon).astype(np.int32)], 1)
 
+            #plt.imshow(annotation_mask)
+            #plt.show()
+
         relevant_tiles_dict = {}
         tile_nb = 0
 
@@ -195,7 +198,7 @@ class WSIHandler:
                                         col * tile_size:col * tile_size + tile_size]) > 0:
                         annotated = True
 
-                if tissue_coverage >= min_coverage:
+                if tissue_coverage >= min_coverage or annotated:
                     relevant_tiles_dict.update({tile_nb: {"x": col * tile_size, "y": row * tile_size,
                                                           "size": tile_size, "level": level, "annotated": annotated}})
                     if self.config["use_tissue_detection"]:
@@ -209,9 +212,10 @@ class WSIHandler:
                                                         (col * tile_size + tile_size, row * tile_size + tile_size),
                                                         (255, 0, 0),
                                                         1)
+
                     tile_nb += 1
 
-        if show:
+        if show and self.config["use_tissue_detection"]:
             plt.imshow(colored)
             plt.title("Tiled image")
             plt.show()
@@ -273,7 +277,7 @@ class WSIHandler:
         scaling_factor = int(self.slide.level_downsamples[level])
 
         patch_dict = {}
-
+        patch_nb = 0
         for tile_key in tile_dict:
             tile_x = tile_dict[tile_key]["x"] * scaling_factor
             tile_y = tile_dict[tile_key]["y"] * scaling_factor
@@ -311,7 +315,7 @@ class WSIHandler:
                     cv2.fillPoly(tile_annotation_mask, [np.array(polygon).astype(np.int32)], 1)
 
             stop_y = False
-            patch_nb = 0
+
             for row in range(rows):
                 stop_x = False
 
@@ -681,11 +685,12 @@ class WSIHandler:
                 for slide in slide_list:
                     self.process_slide(slide)
 
+
             # Save label proportion per slide
             labels = list(self.config["label_dict"].keys())
             if len(labels) == 2:
                 slide_dict = {}
-                for i in range(len(slide_list)):
+                for i in range(len(annotated_slides)):
                     slide = slide_list[i]
                     slide_name = os.path.basename(slide)
                     slide_name = os.path.splitext(slide_name)[0]
