@@ -151,7 +151,11 @@ class WSIHandler:
 
     def determine_tile_size(self, level):
 
-        tile_size_0 = self.config["patches_per_tile"] * self.config["patch_size"]
+        if self.config["calibration"]["use_non_pixel_lengths"]:
+            tile_size_0 = (self.config["calibration"]["patch_size_microns"]/self.res_x) * self.config["patches_per_tile"]
+        else:
+            tile_size_0 = self.config["patches_per_tile"] * self.config["patch_size"]
+
         downscale_factor = int(self.slide.level_downsamples[level])
         tile_size = int(tile_size_0 / downscale_factor)
 
@@ -177,9 +181,6 @@ class WSIHandler:
 
             for polygon in scaled_list:
                 cv2.fillPoly(annotation_mask, [np.array(polygon).astype(np.int32)], 1)
-
-            #plt.imshow(annotation_mask)
-            #plt.show()
 
         relevant_tiles_dict = {}
         tile_nb = 0
@@ -254,22 +255,6 @@ class WSIHandler:
                     os.makedirs(sub_path)
 
         self.output_path = slide_path
-
-    def normalize_tile_size(self, tile):
-
-        normalizing_factor_x = self.config["microns_per_pixel"] / self.res_x
-        normalizing_factor_y = self.config["microns_per_pixel"] / self.res_y
-
-        tile_height = tile.shape[1]
-        tile_width = tile.shape[0]
-
-        scaled_height = int(tile_height / normalizing_factor_y)
-        scaled_width = int(tile_width / normalizing_factor_x)
-
-        resized_tile = cv2.resize(tile, (scaled_width, scaled_height))
-        new_tile_size = scaled_height
-
-        return resized_tile, new_tile_size
 
     def extract_calibrated_patches(self, tile_dict, level, annotations, label_dict, overlap=0, annotation_overlap=0,
                                    slide_name=None, output_format="png"):
@@ -684,7 +669,6 @@ class WSIHandler:
             else:
                 for slide in slide_list:
                     self.process_slide(slide)
-
 
             # Save label proportion per slide
             labels = list(self.config["label_dict"].keys())
