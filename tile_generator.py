@@ -185,8 +185,9 @@ class WSIHandler:
         relevant_tiles_dict = {}
         tile_nb = 0
 
-        for row in range(rows):
-            for col in range(cols):
+        # +1 to solve border issues
+        for row in range(rows+1):
+            for col in range(cols+1):
 
                 tile = tissue_mask[row * tile_size:row * tile_size + tile_size,
                        col * tile_size:col * tile_size + tile_size]
@@ -323,6 +324,9 @@ class WSIHandler:
 
                     patch = tile[patch_y:patch_y + patch_size_px_y, patch_x:patch_x + patch_size_px_x, :]
 
+                    if np.sum(patch) == 0:
+                        break
+
                     # check if the patch is annotated
                     annotated = False
                     if annotations is not None:
@@ -436,6 +440,9 @@ class WSIHandler:
                         global_y = patch_y + tile_y
 
                         patch = tile[patch_y:patch_y + patch_size, patch_x:patch_x + patch_size, :]
+
+                        if np.sum(patch) == 0:
+                            break
 
                         # check if the patch is annotated
                         annotated = False
