@@ -165,9 +165,13 @@ class WSIHandler:
 
     def get_relevant_tiles(self, tissue_mask, tile_size, min_coverage, level, show=False):
 
-        # TODO: Handling border cases using the residue
         rows, row_residue = divmod(tissue_mask.shape[0], tile_size)
         cols, col_residue = divmod(tissue_mask.shape[1], tile_size)
+
+        if row_residue:
+            rows += 1
+        if col_residue:
+            cols += 1
 
         if self.config["use_tissue_detection"]:
             colored = cv2.cvtColor(tissue_mask, cv2.COLOR_GRAY2RGB)
@@ -186,8 +190,8 @@ class WSIHandler:
         tile_nb = 0
 
         # +1 to solve border issues
-        for row in range(rows+1):
-            for col in range(cols+1):
+        for row in range(rows):
+            for col in range(cols):
 
                 tile = tissue_mask[row * tile_size:row * tile_size + tile_size,
                        col * tile_size:col * tile_size + tile_size]
