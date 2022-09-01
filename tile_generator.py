@@ -34,7 +34,7 @@ import openslide
 # Custom
 import tissue_detection
 
-_MULTIPROCESS = False
+_MULTIPROCESS = True
 
 
 class WSIHandler:
