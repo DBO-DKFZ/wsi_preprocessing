@@ -29,7 +29,7 @@ def main(config_path):
 
 if __name__ == "__main__":
     parser = ArgumentParser()
-    parser.add_argument("--config_path", default=script_dir + "/resources/config.json")
+    parser.add_argument("--config_path", default=script_dir + "/resources/config_old.json")
     args = parser.parse_args()
 
     main(args.config_path)

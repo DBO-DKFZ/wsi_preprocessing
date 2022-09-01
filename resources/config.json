@@ -2,35 +2,41 @@
   "use_tissue_detection": true,
   "tissue_coverage": 0.9,
   "processing_level": 5,
-  "blocked_threads": 0,
+  "blocked_threads": 10,
   "patches_per_tile": 8,
-  "overlap": 0.25,
-  "annotation_overlap": 0.25,
+  "overlap": 0.0,
+  "annotation_overlap": 0.0,
   "patch_size": 256,
-  "calibration": {
-    "use_non_pixel_lengths": true,
-    "patch_size_microns": 64,
-    "resize": true
+  "tile_saving":{
+    "save_tiles": true,
+    "tile_size": 256,
+    "extraction_level": 2,
+    "annotation_threshold": 0.00001
   },
-  "slides_dir": "C:\\Development\\wsi_preprocessing\\resources\\test_slide\\svs_slides",
-  "annotation_dir": "",
+  "calibration": {
+        "use_non_pixel_lengths": false,
+        "patch_size_microns": 64,
+        "resize": false
+    },
+  "slides_dir": "E:\\camelyon17\\slides\\center_0",
+  "annotation_dir": "E:\\camelyon17\\annotations_json",
   "annotation_file_format": "geojson",
-  "output_path": "C:\\Users\\Martin\\Desktop\\test_output",
-  "skip_unlabeled_slides": false,
+  "output_path": "D:\\test_tiles\\level_test",
+  "skip_unlabeled_slides": true,
   "save_annotated_only": false,
   "output_format": "jpeg",
   "metadata_format": "json",
   "show_mode": false,
   "label_dict": {
-    "non_tumor": {
-      "type": "==",
-      "threshold": 0,
-      "annotated": false
-    },
-    "tumor": {
-      "type": ">=",
-      "threshold": 0.5,
-      "annotated": true
+  	"non_tumor": {
+             "type": "==",
+             "threshold": 0,
+             "annotated": false
+             },
+        "tumor": {
+            "type": ">=",
+            "threshold": 0.5,
+            "annotated": true
+        }
     }
-  }
 }

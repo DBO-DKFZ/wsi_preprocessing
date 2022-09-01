@@ -34,7 +34,7 @@ import openslide
 # Custom
 import tissue_detection
 
-_MULTIPROCESS = True
+_MULTIPROCESS = False
 
 
 class WSIHandler:
@@ -155,6 +155,53 @@ class WSIHandler:
 
         return tissue_mask, level
 
+    def save_tiles(self, config, slide_name, output_format="jpeg"):
+
+        tile_size = config["tile_saving"]["tile_size"]
+
+        slide_image = self.get_img(level=self.config["tile_saving"]["extraction_level"])[0][:, :, 0:3]
+
+        if self.annotation_dict is not None:
+            annotation_mask = np.zeros(shape=(slide_image.shape[0], slide_image.shape[1]))
+            scaling_factor = self.slide.level_downsamples[self.config["tile_saving"]["extraction_level"]]
+
+            scaled_list = [
+                [[point[0] / scaling_factor, point[1] / scaling_factor] for point in self.annotation_dict[polygon]]
+                for polygon in self.annotation_dict
+            ]
+
+            for polygon in scaled_list:
+                cv2.fillPoly(annotation_mask, [np.array(polygon).astype(np.int32)], 1)
+
+        rows, row_residue = divmod(slide_image.shape[0], tile_size)
+        cols, col_residue = divmod(slide_image.shape[1], tile_size)
+
+        saving_tile_dict = {}
+        tile_nb = 0
+        for row in range(rows):
+            for col in range(cols):
+                tile_x = col * tile_size
+                tile_y = row * tile_size
+
+                global_x = self.slide.level_downsamples[self.config["tile_saving"]["extraction_level"]] * tile_x
+                global_y = self.slide.level_downsamples[self.config["tile_saving"]["extraction_level"]] * tile_y
+
+                tile = slide_image[tile_y:tile_y+tile_size, tile_x:tile_x+tile_size, :]
+                annotation_percentage = np.count_nonzero(annotation_mask[tile_y:tile_y+tile_size, tile_x:tile_x+tile_size])/tile.size
+
+                if annotation_percentage > self.config["tile_saving"]["annotation_threshold"]:
+                    file_name = file_name = slide_name + "_" + str(global_x) + "_" + str(global_y) + "." + output_format
+                    saving_tile_dict.update({tile_nb: {"tile_x": tile_x,
+                                                       "slide_name": slide_name,
+                                                       "tile_y": tile_y,
+                                                       "size": tile_size,
+                                                       "level": self.config["tile_saving"]["extraction_level"]}})
+
+                    patch = Image.fromarray(tile)
+                    patch.save(os.path.join(self.output_path, file_name), format=output_format)
+
+                    tile_nb += 1
+
     def determine_tile_size(self, level):
 
         if self.config["calibration"]["use_non_pixel_lengths"]:
@@ -187,6 +234,7 @@ class WSIHandler:
         if self.annotation_dict is not None:
             annotation_mask = np.zeros(shape=(tissue_mask.shape[0], tissue_mask.shape[1]))
             scaling_factor = self.slide.level_downsamples[level]
+
             scaled_list = [
                 [[point[0] / scaling_factor, point[1] / scaling_factor] for point in self.annotation_dict[polygon]]
                 for polygon in self.annotation_dict
@@ -198,59 +246,40 @@ class WSIHandler:
         relevant_tiles_dict = {}
         tile_nb = 0
 
-        # +1 to solve border issues
         for row in range(rows):
             for col in range(cols):
 
-                tile = tissue_mask[
-                    row * tile_size : row * tile_size + tile_size, col * tile_size : col * tile_size + tile_size
-                ]
-                tissue_coverage = np.count_nonzero(tile) / tile.size
-                annotated = False
+                tile = tissue_mask[row * tile_size:row * tile_size + tile_size,
+                       col * tile_size:col * tile_size + tile_size]
 
-                if self.annotation_dict is not None:
-                    if (
-                        np.count_nonzero(
-                            annotation_mask[
-                                row * tile_size : row * tile_size + tile_size,
-                                col * tile_size : col * tile_size + tile_size,
-                            ]
-                        )
-                        > 0
-                    ):
-                        annotated = True
+                if tile.size == 0:
+                    pass
+                else:
+                    tissue_coverage = np.count_nonzero(tile) / tile.size
+                    annotated = False
 
-                if tissue_coverage >= min_coverage or annotated:
-                    relevant_tiles_dict.update(
-                        {
-                            tile_nb: {
-                                "x": col * tile_size,
-                                "y": row * tile_size,
-                                "size": tile_size,
-                                "level": level,
-                                "annotated": annotated,
-                            }
-                        }
-                    )
-                    if self.config["use_tissue_detection"]:
-                        if annotated:
-                            colored = cv2.rectangle(
-                                colored,
-                                (col * tile_size, row * tile_size),
-                                (col * tile_size + tile_size, row * tile_size + tile_size),
-                                (0, 255, 0),
-                                3,
-                            )
-                        else:
-                            colored = cv2.rectangle(
-                                colored,
-                                (col * tile_size, row * tile_size),
-                                (col * tile_size + tile_size, row * tile_size + tile_size),
-                                (255, 0, 0),
-                                1,
-                            )
+                    if self.annotation_dict is not None:
+                        if np.count_nonzero(annotation_mask[
+                                            row * tile_size:row * tile_size + tile_size,
+                                            col * tile_size:col * tile_size + tile_size]) > 0:
+                            annotated = True
 
-                    tile_nb += 1
+                    if tissue_coverage >= min_coverage or annotated:
+                        relevant_tiles_dict.update({tile_nb: {"x": col * tile_size, "y": row * tile_size,
+                                                              "size": tile_size, "level": level, "annotated": annotated}})
+                        if self.config["use_tissue_detection"]:
+                            if annotated:
+                                colored = cv2.rectangle(colored, (col * tile_size, row * tile_size),
+                                                            (col * tile_size + tile_size, row * tile_size + tile_size),
+                                                            (0, 255, 0),
+                                                            3)
+                            else:
+                                colored = cv2.rectangle(colored, (col * tile_size, row * tile_size),
+                                                            (col * tile_size + tile_size, row * tile_size + tile_size),
+                                                            (255, 0, 0),
+                                                            1)
+
+                        tile_nb += 1
 
         if show and self.config["use_tissue_detection"]:
             plt.imshow(colored)
@@ -382,7 +411,7 @@ class WSIHandler:
                     annotated = False
                     if annotations is not None:
                         patch_mask = tile_annotation_mask[
-                            patch_y : patch_y + patch_size_px_y, patch_x : patch_x + patch_size_px_x
+                            patch_y: patch_y + patch_size_px_y, patch_x : patch_x + patch_size_px_x
                         ]
                         label = self.check_for_label(label_dict, patch_mask)
                         if label is not None:
@@ -437,7 +466,6 @@ class WSIHandler:
         output_format="png",
     ):
         # TODO: Only working with binary labels right now
-        px_overlap = int(patch_size * overlap)
         patch_dict = {}
 
         scaling_factor = int(self.slide.level_downsamples[level])
@@ -507,6 +535,8 @@ class WSIHandler:
 
                         if np.sum(patch) == 0:
                             break
+
+                        label_percentage = None
 
                         # check if the patch is annotated
                         annotated = False
@@ -616,15 +646,26 @@ class WSIHandler:
         self.res_x = float(self.slide.properties["openslide.mpp-x"])
         self.res_y = float(self.slide.properties["openslide.mpp-y"])
 
+    def init_philips(self):
+        self.scanner = "philips"
+
+        self.res_x = float(self.slide.properties["openslide.mpp-x"])
+        self.res_y = float(self.slide.properties["openslide.mpp-y"])
+
     def init_patch_calibration(self):
 
         properties = list(self.slide.properties)
+
+        scanner = self.slide.properties["openslide.vendor"]
 
         # check scanner type
         if self.slide.properties["openslide.vendor"] == "aperio":
             self.init_aperio()
         elif self.slide.properties["openslide.vendor"] == "generic-tiff":
             self.init_generic_tiff()
+
+        elif self.slide.properties["openslide.vendor"] == "philips":
+            self.init_philips()
 
         # future vendors
         # elif ...
@@ -652,57 +693,61 @@ class WSIHandler:
             slide_path = os.path.join(self.config["slides_dir"], slide)
             level = self.load_slide(slide_path)
 
-            if self.config["calibration"]["use_non_pixel_lengths"]:
-                self.init_patch_calibration()
-
-            if self.config["use_tissue_detection"]:
-                mask, level = self.apply_tissue_detection(level=level, show=self.config["show_mode"])
-            else:
-                mask = np.ones(shape=self.slide.level_dimensions[level]).transpose()
-
-            tile_size = self.determine_tile_size(level)
-
-            tile_dict = self.get_relevant_tiles(
-                mask,
-                tile_size=tile_size,
-                min_coverage=self.config["tissue_coverage"],
-                level=level,
-                show=self.config["show_mode"],
-            )
-
             self.make_dirs(
                 output_path=self.config["output_path"],
                 slide_name=slide_name,
                 label_dict=self.config["label_dict"],
-                annotated=annotated,
+                annotated=annotated
             )
 
-            # Calibrated or non calibrated patch sizes
-            if self.config["calibration"]["use_non_pixel_lengths"]:
-                patch_dict = self.extract_calibrated_patches(
-                    tile_dict,
-                    level,
-                    self.annotation_dict,
-                    self.config["label_dict"],
-                    overlap=self.config["overlap"],
-                    annotation_overlap=self.config["annotation_overlap"],
-                    slide_name=slide_name,
-                    output_format=self.config["output_format"],
-                )
+            if self.config["tile_saving"]["save_tiles"]:
+                self.save_tiles(self.config, slide_name)
             else:
-                patch_dict = self.extract_patches(
-                    tile_dict,
-                    level,
-                    self.annotation_dict,
-                    self.config["label_dict"],
-                    overlap=self.config["overlap"],
-                    annotation_overlap=self.config["annotation_overlap"],
-                    patch_size=self.config["patch_size"],
-                    slide_name=slide_name,
-                    output_format=self.config["output_format"],
+
+                if self.config["calibration"]["use_non_pixel_lengths"]:
+                    self.init_patch_calibration()
+
+                if self.config["use_tissue_detection"]:
+                    mask, level = self.apply_tissue_detection(level=level, show=self.config["show_mode"])
+                else:
+                    mask = np.ones(shape=self.slide.level_dimensions[level]).transpose()
+
+                tile_size = self.determine_tile_size(level)
+
+                tile_dict = self.get_relevant_tiles(
+                    mask,
+                    tile_size=tile_size,
+                    min_coverage=self.config["tissue_coverage"],
+                    level=level,
+                    show=self.config["show_mode"],
                 )
 
-            self.export_dict(patch_dict, self.config["metadata_format"], "tile_information")
+                # Calibrated or non calibrated patch sizes
+                if self.config["calibration"]["use_non_pixel_lengths"]:
+                    patch_dict = self.extract_calibrated_patches(
+                        tile_dict,
+                        level,
+                        self.annotation_dict,
+                        self.config["label_dict"],
+                        overlap=self.config["overlap"],
+                        annotation_overlap=self.config["annotation_overlap"],
+                        slide_name=slide_name,
+                        output_format=self.config["output_format"],
+                    )
+                else:
+                    patch_dict = self.extract_patches(
+                        tile_dict,
+                        level,
+                        self.annotation_dict,
+                        self.config["label_dict"],
+                        overlap=self.config["overlap"],
+                        annotation_overlap=self.config["annotation_overlap"],
+                        patch_size=self.config["patch_size"],
+                        slide_name=slide_name,
+                        output_format=self.config["output_format"],
+                    )
+
+                self.export_dict(patch_dict, self.config["metadata_format"], "tile_information")
 
         except Exception as e:
             print("Error in slide", slide_name, "error is:", e)
@@ -773,7 +818,10 @@ class WSIHandler:
                     n_tumor = len(os.listdir(os.path.join(slide_path, labels[1])))
                     n_other = len(os.listdir(os.path.join(slide_path, labels[0])))
                     n_total = n_tumor + n_other
-                    frac = n_tumor / n_total * 100
+                    try:
+                        frac = n_tumor / n_total * 100
+                    except:
+                        frac = None
                     slide_dict.update(
                         {
                             i: {
@@ -791,7 +839,7 @@ class WSIHandler:
                 print("Can only write slide information for binary classification problem")
 
             # Save used config file
-            file = os.path.join(self.config["output_path"], "config.json")
+            file = os.path.join(self.config["output_path"], "config_old.json")
             with open(file, "w") as json_file:
                 json.dump(self.config, json_file, indent=4)
 
