@@ -34,7 +34,7 @@ import openslide
 # Custom
 import tissue_detection
 
-_MULTIPROCESS = True
+_MULTIPROCESS = False
 
 
 class WSIHandler:
@@ -139,14 +139,14 @@ class WSIHandler:
 
         return image, level
 
-    def apply_tissue_detection(self, level=None, show=False):
+    def apply_tissue_detection(self, level=None, show=False, remove_top_border=False):
 
         if level is not None:
             image, level = self.get_img(level, show)
         else:
             image, level = self.get_img(show=show)
 
-        tissue_mask = tissue_detection.tissue_detection(image)
+        tissue_mask = tissue_detection.tissue_detection(image, remove_top_border)
 
         if show:
             plt.imshow(tissue_mask)
@@ -656,7 +656,9 @@ class WSIHandler:
                 self.init_patch_calibration()
 
             if self.config["use_tissue_detection"]:
-                mask, level = self.apply_tissue_detection(level=level, show=self.config["show_mode"])
+                mask, level = self.apply_tissue_detection(
+                    level=level, show=self.config["show_mode"], remove_top_border=self.config["remove_top_border"]
+                )
             else:
                 mask = np.ones(shape=self.slide.level_dimensions[level]).transpose()
 
