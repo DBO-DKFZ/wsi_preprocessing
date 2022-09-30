@@ -14,6 +14,7 @@
     "resize": true
   },
   "slides_dir": "C:\\Development\\wsi_preprocessing\\resources\\test_slide\\svs_slides",
+  "slideinfo_dir": null,
   "annotation_dir": "",
   "annotation_file_format": "geojson",
   "output_path": "C:\\Users\\Martin\\Desktop\\test_output",
@@ -21,6 +22,7 @@
   "save_annotated_only": false,
   "output_format": "jpeg",
   "metadata_format": "json",
+  "write_slideinfo": true,
   "show_mode": false,
   "label_dict": {
     "non_tumor": {

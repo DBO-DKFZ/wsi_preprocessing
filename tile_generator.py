@@ -34,7 +34,7 @@ import openslide
 # Custom
 import tissue_detection
 
-_MULTIPROCESS = False
+_MULTIPROCESS = True
 
 
 class WSIHandler:
@@ -280,7 +280,7 @@ class WSIHandler:
                 if label_percentage < label_dict[label]["threshold"]:
                     return label, label_percentage
 
-        return None
+        return None, None
 
     def make_dirs(self, output_path, slide_name, label_dict, annotated):
         slide_path = os.path.join(output_path, slide_name)
@@ -521,6 +521,7 @@ class WSIHandler:
 
                         else:
                             label = "unlabeled"
+                            label_percentage = None
 
                         if label is not None:
                             if self.annotated_only and annotated or not self.annotated_only:
@@ -635,79 +636,81 @@ class WSIHandler:
 
         slide_name = os.path.basename(slide)
         slide_name = os.path.splitext(slide_name)[0]
-        try:
-            print("Processing", slide_name, "process id is", os.getpid())
 
-            annotation_path = os.path.join(
-                self.config["annotation_dir"], slide_name + "." + self.config["annotation_file_format"]
+        # try:
+        print("Processing", slide_name, "process id is", os.getpid())
+
+        annotation_path = os.path.join(
+            self.config["annotation_dir"], slide_name + "." + self.config["annotation_file_format"]
+        )
+        if os.path.exists(annotation_path):
+
+            annotated = True
+            self.annotation_dict = self.load_annotation(annotation_path)
+        else:
+            annotated = False
+            self.annotation_dict = None
+
+        slide_path = os.path.join(self.config["slides_dir"], slide)
+        level = self.load_slide(slide_path)
+
+        if self.config["calibration"]["use_non_pixel_lengths"]:
+            self.init_patch_calibration()
+
+        if self.config["use_tissue_detection"]:
+            mask, level = self.apply_tissue_detection(
+                level=level, show=self.config["show_mode"], remove_top_border=self.config["remove_top_border"]
             )
-            if os.path.exists(annotation_path):
+        else:
+            mask = np.ones(shape=self.slide.level_dimensions[level]).transpose()
 
-                annotated = True
-                self.annotation_dict = self.load_annotation(annotation_path)
-            else:
-                annotated = False
-                self.annotation_dict = None
+        tile_size = self.determine_tile_size(level)
 
-            slide_path = os.path.join(self.config["slides_dir"], slide)
-            level = self.load_slide(slide_path)
+        tile_dict = self.get_relevant_tiles(
+            mask,
+            tile_size=tile_size,
+            min_coverage=self.config["tissue_coverage"],
+            level=level,
+            show=self.config["show_mode"],
+        )
 
-            if self.config["calibration"]["use_non_pixel_lengths"]:
-                self.init_patch_calibration()
+        self.make_dirs(
+            output_path=self.config["output_path"],
+            slide_name=slide_name,
+            label_dict=self.config["label_dict"],
+            annotated=annotated,
+        )
 
-            if self.config["use_tissue_detection"]:
-                mask, level = self.apply_tissue_detection(
-                    level=level, show=self.config["show_mode"], remove_top_border=self.config["remove_top_border"]
-                )
-            else:
-                mask = np.ones(shape=self.slide.level_dimensions[level]).transpose()
-
-            tile_size = self.determine_tile_size(level)
-
-            tile_dict = self.get_relevant_tiles(
-                mask,
-                tile_size=tile_size,
-                min_coverage=self.config["tissue_coverage"],
-                level=level,
-                show=self.config["show_mode"],
-            )
-
-            self.make_dirs(
-                output_path=self.config["output_path"],
+        # Calibrated or non calibrated patch sizes
+        if self.config["calibration"]["use_non_pixel_lengths"]:
+            patch_dict = self.extract_calibrated_patches(
+                tile_dict,
+                level,
+                self.annotation_dict,
+                self.config["label_dict"],
+                overlap=self.config["overlap"],
+                annotation_overlap=self.config["annotation_overlap"],
                 slide_name=slide_name,
-                label_dict=self.config["label_dict"],
-                annotated=annotated,
+                output_format=self.config["output_format"],
+            )
+        else:
+            patch_dict = self.extract_patches(
+                tile_dict,
+                level,
+                self.annotation_dict,
+                self.config["label_dict"],
+                overlap=self.config["overlap"],
+                annotation_overlap=self.config["annotation_overlap"],
+                patch_size=self.config["patch_size"],
+                slide_name=slide_name,
+                output_format=self.config["output_format"],
             )
 
-            # Calibrated or non calibrated patch sizes
-            if self.config["calibration"]["use_non_pixel_lengths"]:
-                patch_dict = self.extract_calibrated_patches(
-                    tile_dict,
-                    level,
-                    self.annotation_dict,
-                    self.config["label_dict"],
-                    overlap=self.config["overlap"],
-                    annotation_overlap=self.config["annotation_overlap"],
-                    slide_name=slide_name,
-                    output_format=self.config["output_format"],
-                )
-            else:
-                patch_dict = self.extract_patches(
-                    tile_dict,
-                    level,
-                    self.annotation_dict,
-                    self.config["label_dict"],
-                    overlap=self.config["overlap"],
-                    annotation_overlap=self.config["annotation_overlap"],
-                    patch_size=self.config["patch_size"],
-                    slide_name=slide_name,
-                    output_format=self.config["output_format"],
-                )
+        self.export_dict(patch_dict, self.config["metadata_format"], "tile_information")
 
-            self.export_dict(patch_dict, self.config["metadata_format"], "tile_information")
+        # except Exception as e:
+        #     print("Error in slide", slide_name, "error is:", e)
 
-        except Exception as e:
-            print("Error in slide", slide_name, "error is:", e)
         try:
             self.save_thumbnail(mask, level=level, slide_name=slide_name, output_format=self.config["output_format"])
             print("Finished slide ", slide_name)
@@ -723,6 +726,7 @@ class WSIHandler:
         for extension in extensions:
             for file in Path(self.config["slides_dir"]).resolve().glob("**/*" + extension):
                 slide_list.append(file)
+        slide_list = sorted(slide_list)
 
         self.annotation_list = []
         if os.path.exists(self.config["annotation_dir"]):
@@ -751,8 +755,24 @@ class WSIHandler:
             slide_list = annotated_slides
             print("Processing annotated slides only")
 
+        if self.config["slideinfo_dir"] is not None:
+            slideinfo_file = Path(self.config["slideinfo_dir"]) / "slide_information.csv"
+            assert slideinfo_file.is_file(), "slide_information.csv does not exist"
+            slide_df = pd.read_csv(slideinfo_file)
+            slide_names = slide_df["Pseudonym"].to_list()
+
+            selected_slides = []
+            for slide in slide_list:
+                slide_name = slide.stem
+                if "-" in slide_name:
+                    slide_name = slide_name.split("-")[0]
+                if int(slide_name) in slide_names:
+                    selected_slides.append(slide)
+            slide_list = selected_slides
+            print("Processing", len(slide_list), "selected slides")
+            print("###############################################")
+
         if not len(slide_list) == 0:
-            slide_list = sorted(slide_list)
             if _MULTIPROCESS:
                 available_threads = multiprocessing.cpu_count() - self.config["blocked_threads"]
                 pool = multiprocessing.Pool(available_threads)
@@ -763,34 +783,35 @@ class WSIHandler:
                     self.process_slide(slide)
 
             # Save label proportion per slide
-            labels = list(self.config["label_dict"].keys())
-            if len(labels) == 2:
-                slide_dict = {}
-                for i in range(len(annotated_slides)):
-                    slide = slide_list[i]
-                    slide_name = os.path.basename(slide)
-                    slide_name = os.path.splitext(slide_name)[0]
-                    slide_path = os.path.join(self.config["output_path"], slide_name)
-                    # Assume label 1 is tumor label
-                    n_tumor = len(os.listdir(os.path.join(slide_path, labels[1])))
-                    n_other = len(os.listdir(os.path.join(slide_path, labels[0])))
-                    n_total = n_tumor + n_other
-                    frac = n_tumor / n_total * 100
-                    slide_dict.update(
-                        {
-                            i: {
-                                "slide_name": slide_name,
-                                labels[1]: n_tumor,
-                                labels[0]: n_other,
-                                "total": n_total,
-                                "frac": frac,
+            if self.config["write_slideinfo"]:
+                labels = list(self.config["label_dict"].keys())
+                if len(labels) == 2:
+                    slide_dict = {}
+                    for i in range(len(annotated_slides)):
+                        slide = slide_list[i]
+                        slide_name = os.path.basename(slide)
+                        slide_name = os.path.splitext(slide_name)[0]
+                        slide_path = os.path.join(self.config["output_path"], slide_name)
+                        # Assume label 1 is tumor label
+                        n_tumor = len(os.listdir(os.path.join(slide_path, labels[1])))
+                        n_other = len(os.listdir(os.path.join(slide_path, labels[0])))
+                        n_total = n_tumor + n_other
+                        frac = n_tumor / n_total * 100
+                        slide_dict.update(
+                            {
+                                i: {
+                                    "slide_name": slide_name,
+                                    labels[1]: n_tumor,
+                                    labels[0]: n_other,
+                                    "total": n_total,
+                                    "frac": frac,
+                                }
                             }
-                        }
-                    )
-                self.output_path = self.config["output_path"]
-                self.export_dict(slide_dict, self.config["metadata_format"], "slide_information")
-            else:
-                print("Can only write slide information for binary classification problem")
+                        )
+                    self.output_path = self.config["output_path"]
+                    self.export_dict(slide_dict, self.config["metadata_format"], "slide_information")
+                else:
+                    print("Can only write slide information for binary classification problem")
 
             # Save used config file
             file = os.path.join(self.config["output_path"], "config.json")
