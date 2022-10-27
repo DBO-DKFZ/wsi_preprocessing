@@ -758,18 +758,24 @@ class WSIHandler:
         if self.config["slideinfo_dir"] is not None:
             slideinfo_file = Path(self.config["slideinfo_dir"]) / "slide_information.csv"
             assert slideinfo_file.is_file(), "slide_information.csv does not exist"
-            slide_df = pd.read_csv(slideinfo_file)
-            slide_names = slide_df["Pseudonym"].to_list()
+            slide_df = pd.read_csv(slideinfo_file, dtype=str)
+            slide_names = []
+            for i in range(len(slide_df)):
+                name = slide_df["Pseudonym"][i]
+                if "Addition" in slide_df.columns:
+                    name += slide_df["Addition"][i] if not pd.isnull(slide_df["Addition"][i]) else ""
+                slide_names.append(name)
 
             selected_slides = []
             for slide in slide_list:
                 slide_name = slide.stem
-                if "-" in slide_name:
-                    slide_name = slide_name.split("-")[0]
-                if int(slide_name) in slide_names:
+                if slide_name in slide_names:
                     selected_slides.append(slide)
+                    slide_names.remove(slide_name)
             slide_list = selected_slides
             print("Processing", len(slide_list), "selected slides")
+            print("###############################################")
+            print("The following slides are missing in folder: ", slide_names)
             print("###############################################")
 
         if not len(slide_list) == 0:
