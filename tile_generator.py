@@ -572,6 +572,11 @@ class WSIHandler:
         else:
             print("Could not write metadata. Metadata format has to be json or csv")
 
+    def export_slide_info(self, dict, slide_name):
+        file = os.path.join(self.config["output_path"], slide_name, "slide_info.json")
+        with open(file, "w") as json_file:
+            json.dump(dict, json_file, indent=4)
+
     def save_thumbnail(self, mask, slide_name, level, output_format="png"):
 
         remap_color = ((0, 0, 0), (255, 255, 255))
@@ -707,6 +712,11 @@ class WSIHandler:
             )
 
         self.export_dict(patch_dict, self.config["metadata_format"], "tile_information")
+
+        slide_dict = {
+            "scaling_factor": int(self.slide.level_downsamples[level]),
+        }
+        self.export_slide_info(slide_dict, slide_name)
 
         # except Exception as e:
         #     print("Error in slide", slide_name, "error is:", e)
