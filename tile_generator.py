@@ -572,7 +572,23 @@ class WSIHandler:
         else:
             print("Could not write metadata. Metadata format has to be json or csv")
 
-    def export_slide_info(self, dict, slide_name):
+    def export_slide_info(self, slide_name, scaling_factor):
+        if self.config["slideinfo_dir"] is not None:
+            slideinfo_file = Path(self.config["slideinfo_dir"]) / "slide_information.csv"
+            assert slideinfo_file.is_file(), "slide_information.csv does not exist"
+            slide_df = pd.read_csv(slideinfo_file, dtype=str)
+            if "Addition" in slide_df.columns:
+                slide_df["Pseudonym"] = slide_df["Pseudonym"] + slide_df["Addition"].fillna("")
+            dict = {
+                "slide_name": slide_name,
+                "slide_label": slide_df[slide_df["Pseudonym"] == slide_name]["Label"].item(),
+            }
+        else:
+            dict = {
+                "slide_name": slide_name,
+            }
+        dict.update({"scaling_factor": scaling_factor})
+
         file = os.path.join(self.config["output_path"], slide_name, "slide_info.json")
         with open(file, "w") as json_file:
             json.dump(dict, json_file, indent=4)
@@ -713,10 +729,7 @@ class WSIHandler:
 
         self.export_dict(patch_dict, self.config["metadata_format"], "tile_information")
 
-        slide_dict = {
-            "scaling_factor": int(self.slide.level_downsamples[level]),
-        }
-        self.export_slide_info(slide_dict, slide_name)
+        self.export_slide_info(slide_name, scaling_factor=int(self.slide.level_downsamples[level]))
 
         # except Exception as e:
         #     print("Error in slide", slide_name, "error is:", e)
@@ -769,12 +782,9 @@ class WSIHandler:
             slideinfo_file = Path(self.config["slideinfo_dir"]) / "slide_information.csv"
             assert slideinfo_file.is_file(), "slide_information.csv does not exist"
             slide_df = pd.read_csv(slideinfo_file, dtype=str)
-            slide_names = []
-            for i in range(len(slide_df)):
-                name = slide_df["Pseudonym"][i]
-                if "Addition" in slide_df.columns:
-                    name += slide_df["Addition"][i] if not pd.isnull(slide_df["Addition"][i]) else ""
-                slide_names.append(name)
+            if "Addition" in slide_df.columns:
+                slide_df["Pseudonym"] = slide_df["Pseudonym"] + slide_df["Addition"].fillna("")
+            slide_names = slide_df["Pseudonym"].to_list()
 
             selected_slides = []
             for slide in slide_list:
