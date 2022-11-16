@@ -616,6 +616,19 @@ class WSIHandler:
         self.res_x = float(self.slide.properties["openslide.mpp-x"])
         self.res_y = float(self.slide.properties["openslide.mpp-y"])
 
+    def init_mirax(self):
+        self.scanner = "mirax"
+        self.res_x = float(self.slide.properties["openslide.mpp-x"])
+        self.res_y = float(self.slide.properties["openslide.mpp-y"])
+
+    def init_unknown(self):
+        try:
+            self.scanner = self.slide.properties["openslide.vendor"]
+            self.res_x = float(self.slide.properties["openslide.mpp-x"])
+            self.res_y = float(self.slide.properties["openslide.mpp-y"])
+        except Exception as e:
+            print(e)
+
     def init_patch_calibration(self):
 
         properties = list(self.slide.properties)
@@ -625,7 +638,10 @@ class WSIHandler:
             self.init_aperio()
         elif self.slide.properties["openslide.vendor"] == "generic-tiff":
             self.init_generic_tiff()
-
+        elif self.slide.properties["openslide.vendor"] == "mirax":
+            self.init_mirax()
+        else:
+            self.init_unknown()
         # future vendors
         # elif ...
 
@@ -715,7 +731,7 @@ class WSIHandler:
 
     def slides2patches(self):
 
-        extensions = [".tif", ".svs"]
+        extensions = [".tif", ".svs", ".mrxs"]
         slide_list = []
 
         for extension in extensions:
