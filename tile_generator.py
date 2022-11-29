@@ -7,9 +7,7 @@ import os
 import xml.etree.ElementTree as ET
 from argparse import ArgumentParser
 from pathlib import Path
-import json
 import pandas as pd
-import multiprocessing
 import cv2
 import matplotlib.pyplot as plt
 
@@ -651,6 +649,7 @@ class WSIHandler:
 
         slide_name = os.path.basename(slide)
         slide_name = os.path.splitext(slide_name)[0]
+
         try:
             print("Processing", slide_name, "process id is", os.getpid())
 
@@ -664,6 +663,13 @@ class WSIHandler:
             else:
                 annotated = False
                 self.annotation_dict = None
+
+            self.make_dirs(
+                output_path=self.config["output_path"],
+                slide_name=slide_name,
+                label_dict=self.config["label_dict"],
+                annotated=annotated,
+            )
 
             slide_path = os.path.join(self.config["slides_dir"], slide)
             level = self.load_slide(slide_path)
@@ -684,13 +690,6 @@ class WSIHandler:
                 min_coverage=self.config["tissue_coverage"],
                 level=level,
                 show=self.config["show_mode"],
-            )
-
-            self.make_dirs(
-                output_path=self.config["output_path"],
-                slide_name=slide_name,
-                label_dict=self.config["label_dict"],
-                annotated=annotated,
             )
 
             # Calibrated or non calibrated patch sizes
@@ -719,24 +718,49 @@ class WSIHandler:
                 )
 
             self.export_dict(patch_dict, self.config["metadata_format"], "tile_information")
+            try:
+                self.save_thumbnail(mask, level=level, slide_name=slide_name,
+                                    output_format=self.config["output_format"])
+                print("Finished slide ", slide_name)
+
+            except BaseException as e:
+                print("Error in writing Thumbnail of slide", slide_name, ", error is:", e)
 
         except Exception as e:
             print("Error in slide", slide_name, "error is:", e)
-        try:
-            self.save_thumbnail(mask, level=level, slide_name=slide_name, output_format=self.config["output_format"])
-            print("Finished slide ", slide_name)
+            self.error_dict.update({slide: e})
 
-        except BaseException as e:
-            print("Error in writing Thumbnail of slide", slide_name, ", error is:", e)
+    def read_slide_file(self, slide_file_path, ext_list):
+
+        slide_list = []
+
+        with open(slide_file_path) as file:
+            lines = file.read().splitlines()
+
+        for line in lines:
+            if os.path.isdir(line):
+                for ext in ext_list:
+                    for file in Path(line).resolve().glob("**/*" + ext):
+                        slide = str(file)
+            else:
+                slide = line
+
+            slide_list.append(slide)
+
+        return slide_list
 
     def slides2patches(self):
 
         extensions = [".tif", ".svs", ".mrxs"]
         slide_list = []
 
-        for extension in extensions:
-            for file in Path(self.config["slides_dir"]).resolve().glob("**/*" + extension):
-                slide_list.append(file)
+        if self.config["slides_file"] is not None:
+            print("Using slide file: " + self.config["slides_file"])
+            slide_list = self.read_slide_file(self.config["slides_file"], extensions)
+        else:
+            for extension in extensions:
+                for file in Path(self.config["slides_dir"]).resolve().glob("**/*" + extension):
+                    slide_list.append(file)
 
         self.annotation_list = []
         if os.path.exists(self.config["annotation_dir"]):
@@ -765,46 +789,63 @@ class WSIHandler:
             slide_list = annotated_slides
             print("Processing annotated slides only")
 
+        if not os.path.exists(self.config["output_path"]):
+            os.makedirs(self.config["output_path"])
+
         if not len(slide_list) == 0:
             slide_list = sorted(slide_list)
             if _MULTIPROCESS:
                 available_threads = multiprocessing.cpu_count() - self.config["blocked_threads"]
                 pool = multiprocessing.Pool(available_threads)
-                pool.map(self.process_slide, slide_list)
+                pool.map(self.process_slide,slide_list)
 
             else:
                 for slide in slide_list:
                     self.process_slide(slide)
 
-            # Save label proportion per slide
-            labels = list(self.config["label_dict"].keys())
-            if len(labels) == 2:
-                slide_dict = {}
-                for i in range(len(annotated_slides)):
+            slide_dict = {}
+
+            if len(annotated_slides) == 0:
+                for i in range(len(slide_list)):
                     slide = slide_list[i]
                     slide_name = os.path.basename(slide)
                     slide_name = os.path.splitext(slide_name)[0]
-                    slide_path = os.path.join(self.config["output_path"], slide_name)
-                    # Assume label 1 is tumor label
-                    n_tumor = len(os.listdir(os.path.join(slide_path, labels[1])))
-                    n_other = len(os.listdir(os.path.join(slide_path, labels[0])))
-                    n_total = n_tumor + n_other
-                    frac = n_tumor / n_total * 100
-                    slide_dict.update(
-                        {
-                            i: {
-                                "slide_name": slide_name,
-                                labels[1]: n_tumor,
-                                labels[0]: n_other,
-                                "total": n_total,
-                                "frac": frac,
-                            }
-                        }
-                    )
+                    slide_dict.update({i: {"slide_name": slide_name,
+                                           "slide_path": slide,
+                                           }
+                                       })
                 self.output_path = self.config["output_path"]
                 self.export_dict(slide_dict, self.config["metadata_format"], "slide_information")
             else:
-                print("Can only write slide information for binary classification problem")
+                # Save label proportion per slide
+                labels = list(self.config["label_dict"].keys())
+                if len(labels) == 2:
+
+                    for i in range(len(annotated_slides)):
+                        slide = slide_list[i]
+                        slide_name = os.path.basename(slide)
+                        slide_name = os.path.splitext(slide_name)[0]
+                        slide_path = os.path.join(self.config["output_path"], slide_name)
+                        # Assume label 1 is tumor label
+                        n_tumor = len(os.listdir(os.path.join(slide_path, labels[1])))
+                        n_other = len(os.listdir(os.path.join(slide_path, labels[0])))
+                        n_total = n_tumor + n_other
+                        frac = n_tumor / n_total * 100
+                        slide_dict.update(
+                            {
+                                i: {
+                                    "slide_name": slide_name,
+                                    labels[1]: n_tumor,
+                                    labels[0]: n_other,
+                                    "total": n_total,
+                                    "frac": frac,
+                                }
+                            }
+                        )
+                    self.output_path = self.config["output_path"]
+                    self.export_dict(slide_dict, self.config["metadata_format"], "slide_information")
+                else:
+                    print("Can only write slide information for binary classification problem")
 
             # Save used config file
             file = os.path.join(self.config["output_path"], "config.json")
