@@ -653,10 +653,14 @@ class WSIHandler:
 
         assert self.scanner, "Not integrated scanner type, aborting"
 
-    def process_slide(self, slide):
+    def process_slide(self, slide: Path):
 
-        slide_name = os.path.basename(slide)
-        slide_name = os.path.splitext(slide_name)[0]
+        if "TCGA" in str(slide):  # Hack for TCGA filenames
+            slide_name = slide.stem
+            slide_name = "-".join(slide_name.split("-", 3)[:3])
+        else:
+            slide_name = os.path.basename(slide)
+            slide_name = os.path.splitext(slide_name)[0]
 
         # try:
         print("Processing", slide_name, "process id is", os.getpid())
@@ -789,6 +793,8 @@ class WSIHandler:
             selected_slides = []
             for slide in slide_list:
                 slide_name = slide.stem
+                if "TCGA" in str(slide):  # Hack for TCGA filenames
+                    slide_name = "-".join(slide_name.split("-", 3)[:3])
                 if slide_name in slide_names:
                     selected_slides.append(slide)
                     slide_names.remove(slide_name)
