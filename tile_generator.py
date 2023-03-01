@@ -148,8 +148,14 @@ class WSIHandler:
 
         tissue_mask = tissue_detection.tissue_detection(image, remove_top_border)
 
+        mask_img = cv2.cvtColor(image, cv2.COLOR_RGBA2RGB) # Remove alpha channel
+        contours, _ = cv2.findContours(tissue_mask, mode=cv2.RETR_EXTERNAL, method=cv2.CHAIN_APPROX_SIMPLE)
+        cv2.drawContours(mask_img, contours, -1, (0,255,0), 3)
+
+        # result = cv2.bitwise_and(image, image, mask=tissue_mask)
+
         if show:
-            plt.imshow(tissue_mask)
+            plt.imshow(mask_img)
             plt.title("Tissue Mask")
             plt.show()
 
@@ -593,7 +599,7 @@ class WSIHandler:
         with open(file, "w") as json_file:
             json.dump(dict, json_file, indent=4)
 
-    def save_thumbnail(self, mask, slide_name, level, output_format="png"):
+    def save_thumbnail(self, mask, slide_name, level, output_format="png", save_mask=True):
 
         remap_color = ((0, 0, 0), (255, 255, 255))
 
@@ -616,6 +622,12 @@ class WSIHandler:
 
         file_name = os.path.join(self.config["output_path"], slide_name, "thumbnail." + output_format)
         plt.imsave(file_name, img, format=output_format)
+
+        if save_mask:
+            contours, _ = cv2.findContours(mask, mode=cv2.RETR_EXTERNAL, method=cv2.CHAIN_APPROX_SIMPLE)
+            cv2.drawContours(img, contours, -1, (0,255,0), 3)
+            file_name = os.path.join(self.config["output_path"], slide_name, "mask_img." + output_format)
+            plt.imsave(file_name, img, format=output_format)
 
     def init_generic_tiff(self):
 
@@ -706,44 +718,43 @@ class WSIHandler:
             annotated=annotated,
         )
 
-        # Calibrated or non calibrated patch sizes
-        if self.config["calibration"]["use_non_pixel_lengths"]:
-            patch_dict = self.extract_calibrated_patches(
-                tile_dict,
-                level,
-                self.annotation_dict,
-                self.config["label_dict"],
-                overlap=self.config["overlap"],
-                annotation_overlap=self.config["annotation_overlap"],
-                slide_name=slide_name,
-                output_format=self.config["output_format"],
-            )
-        else:
-            patch_dict = self.extract_patches(
-                tile_dict,
-                level,
-                self.annotation_dict,
-                self.config["label_dict"],
-                overlap=self.config["overlap"],
-                annotation_overlap=self.config["annotation_overlap"],
-                patch_size=self.config["patch_size"],
-                slide_name=slide_name,
-                output_format=self.config["output_format"],
-            )
+        self.save_thumbnail(mask, level=level, slide_name=slide_name, output_format=self.config["output_format"])
 
-        self.export_dict(patch_dict, self.config["metadata_format"], "tile_information")
+        if self.config["extract_patches"]:
+
+            # Calibrated or non calibrated patch sizes
+            if self.config["calibration"]["use_non_pixel_lengths"]:
+                patch_dict = self.extract_calibrated_patches(
+                    tile_dict,
+                    level,
+                    self.annotation_dict,
+                    self.config["label_dict"],
+                    overlap=self.config["overlap"],
+                    annotation_overlap=self.config["annotation_overlap"],
+                    slide_name=slide_name,
+                    output_format=self.config["output_format"],
+                )
+            else:
+                patch_dict = self.extract_patches(
+                    tile_dict,
+                    level,
+                    self.annotation_dict,
+                    self.config["label_dict"],
+                    overlap=self.config["overlap"],
+                    annotation_overlap=self.config["annotation_overlap"],
+                    patch_size=self.config["patch_size"],
+                    slide_name=slide_name,
+                    output_format=self.config["output_format"],
+                )
+
+            self.export_dict(patch_dict, self.config["metadata_format"], "tile_information")
 
         self.export_slide_info(slide_name, scaling_factor=int(self.slide.level_downsamples[level]))
 
+        print("Finished slide ", slide_name)
+
         # except Exception as e:
         #     print("Error in slide", slide_name, "error is:", e)
-
-        try:
-            self.save_thumbnail(mask, level=level, slide_name=slide_name, output_format=self.config["output_format"])
-            print("Finished slide ", slide_name)
-
-        except BaseException as e:
-            print("Error in writing Thumbnail of slide", slide_name, ", error is:", e)
 
     def slides2patches(self):
 
