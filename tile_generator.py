@@ -12,6 +12,7 @@ import pandas as pd
 import multiprocessing
 import cv2
 import matplotlib.pyplot as plt
+from tqdm import tqdm
 
 # Numpy
 import numpy as np
@@ -66,8 +67,21 @@ class WSIHandler:
         assert config["annotation_overlap"] >= 0 and config["overlap"] < 1, "Annotation overlap must be between 1 and 0"
 
         return config
+    
+    def check_magnification(self, slide_path: str, value: int = 40):
+        check = True
+        self.slide = openslide.OpenSlide(slide_path)
 
-    def load_slide(self, slide_path):
+        if "openslide.objective-power" not in self.slide.properties.keys():
+            check = False
+        elif int(self.slide.properties["openslide.objective-power"]) < value:
+            check = False
+        
+        del self.slide
+
+        return check
+
+    def load_slide(self, slide_path: str):
         self.slide = openslide.OpenSlide(slide_path)
         self.total_width = self.slide.dimensions[0]
         self.total_height = self.slide.dimensions[1]
@@ -625,6 +639,11 @@ class WSIHandler:
                 "slide_name": slide_name,
             }
         dict.update({"scaling_factor": scaling_factor})
+        dict.update({"magnification": int(self.slide.properties["openslide.objective-power"])})
+        dict.update({"mpp-x": float(self.slide.properties["openslide.mpp-x"])})
+        dict.update({"mpp-y": float(self.slide.properties["openslide.mpp-y"])})
+
+        # self.slide.properties
 
         file = os.path.join(self.config["output_path"], slide_name, "slide_info.json")
         with open(file, "w") as json_file:
@@ -719,8 +738,7 @@ class WSIHandler:
             annotated = False
             self.annotation_dict = None
 
-        slide_path = os.path.join(self.config["slides_dir"], slide)
-        level = self.load_slide(slide_path)
+        level = self.load_slide(slide_path=str(slide))
 
         if self.config["calibration"]["use_non_pixel_lengths"]:
             self.init_patch_calibration()
@@ -855,6 +873,19 @@ class WSIHandler:
             print("Processing", len(slide_list), "selected slides")
             print("###############################################")
             print("The following slides are missing in folder: ", slide_names)
+            print("###############################################")
+
+        if self.config["check_magnification"]:
+            print("Checking maximum magnification level:")
+            failed_slides = []
+            for slide in tqdm(slide_list):
+                slide_name = slide.stem
+                if "TCGA" in str(slide):  # Hack for TCGA filenames
+                    slide_name = "-".join(slide_name.split("-", 3)[:3])
+                check = self.check_magnification(str(slide), value=40)
+                if check is False:
+                    failed_slides.append(slide_name)
+            print("The following slides failed the magnification check: ", failed_slides)
             print("###############################################")
 
         if not len(slide_list) == 0:
