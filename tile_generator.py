@@ -430,7 +430,7 @@ class WSIHandler:
 
         return patch_dict
 
-    def extract_patches(
+    def create_patch_dict(
         self,
         tile_dict,
         level,
@@ -441,6 +441,7 @@ class WSIHandler:
         patch_size=256,
         slide_name=None,
         output_format="png",
+        extract_patches=False,
     ):
         # TODO: Only working with binary labels right now
         px_overlap = int(patch_size * overlap)
@@ -459,8 +460,10 @@ class WSIHandler:
                 tile_x = tile_dict[tile_key]["x"] * scaling_factor
                 tile_y = tile_dict[tile_key]["y"] * scaling_factor
                 tile_size = tile_dict[tile_key]["size"] * scaling_factor
-                tile = np.array(self.slide.read_region((tile_x, tile_y), level=0, size=(tile_size, tile_size)))
-                tile = tile[:, :, 0:3]
+
+                if extract_patches:
+                    tile = np.array(self.slide.read_region((tile_x, tile_y), level=0, size=(tile_size, tile_size)))
+                    tile = tile[:, :, 0:3]
 
                 # overlap separately  for annotated and unannotated patches
                 if tile_dict[tile_key]["annotated"]:
@@ -509,10 +512,11 @@ class WSIHandler:
                         global_x = patch_x + tile_x
                         global_y = patch_y + tile_y
 
-                        patch = tile[patch_y : patch_y + patch_size, patch_x : patch_x + patch_size, :]
+                        if extract_patches:
+                            patch = tile[patch_y : patch_y + patch_size, patch_x : patch_x + patch_size, :]
 
-                        if np.sum(patch) == 0:
-                            break
+                            if np.sum(patch) == 0:
+                                break
 
                         # check if the patch is annotated
                         annotated = False
@@ -541,8 +545,9 @@ class WSIHandler:
                                         str(patch_nb) + "_" + str(global_x) + "_" + str(global_y) + "." + output_format
                                     )
 
-                                patch = Image.fromarray(patch)
-                                patch.save(os.path.join(self.output_path, label, file_name), format=output_format)
+                                if extract_patches:
+                                    patch = Image.fromarray(patch)
+                                    patch.save(os.path.join(self.output_path, label, file_name), format=output_format)
 
                                 patch_dict.update(
                                     {
@@ -562,6 +567,32 @@ class WSIHandler:
                             break
                     if stop_y:
                         break
+
+        return patch_dict
+    
+    def extract_patches(
+        self,
+        tile_dict,
+        level,
+        annotations,
+        label_dict,
+        overlap=0,
+        annotation_overlap=0,
+        patch_size=256,
+        slide_name=None,
+        output_format="png",
+    ):
+        patch_dict = self.create_patch_dict(
+        tile_dict,
+        level,
+        annotations,
+        label_dict,
+        overlap,
+        annotation_overlap,
+        patch_size,
+        slide_name,
+        output_format,
+        extract_patches=True)
 
         return patch_dict
 
@@ -721,7 +752,6 @@ class WSIHandler:
         self.save_thumbnail(mask, level=level, slide_name=slide_name, output_format=self.config["output_format"])
 
         if self.config["extract_patches"]:
-
             # Calibrated or non calibrated patch sizes
             if self.config["calibration"]["use_non_pixel_lengths"]:
                 patch_dict = self.extract_calibrated_patches(
@@ -746,8 +776,20 @@ class WSIHandler:
                     slide_name=slide_name,
                     output_format=self.config["output_format"],
                 )
+        else:
+            patch_dict = self.create_patch_dict(
+                    tile_dict,
+                    level,
+                    self.annotation_dict,
+                    self.config["label_dict"],
+                    overlap=self.config["overlap"],
+                    annotation_overlap=self.config["annotation_overlap"],
+                    patch_size=self.config["patch_size"],
+                    slide_name=slide_name,
+                    output_format=self.config["output_format"],
+                )
 
-            self.export_dict(patch_dict, self.config["metadata_format"], "tile_information")
+        self.export_dict(patch_dict, self.config["metadata_format"], "tile_information")
 
         self.export_slide_info(slide_name, scaling_factor=int(self.slide.level_downsamples[level]))
 
