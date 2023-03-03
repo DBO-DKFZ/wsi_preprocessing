@@ -68,18 +68,23 @@ class WSIHandler:
 
         return config
     
-    def check_magnification(self, slide_path: str, value: int = 40):
-        check = True
+    def check_resolution(self, slide_path: str, res_range=[0.22, 0.27]):
         self.slide = openslide.OpenSlide(slide_path)
 
-        if "openslide.objective-power" not in self.slide.properties.keys():
-            check = False
-        elif int(self.slide.properties["openslide.objective-power"]) < value:
-            check = False
+        if "openslide.mpp-x" not in self.slide.properties.keys() or "openslide.mpp-y" not in self.slide.properties.keys():
+            del self.slide
+            return False
+    
+        mpp_x = float(self.slide.properties["openslide.mpp-x"])
+        mpp_y = float(self.slide.properties["openslide.mpp-y"])
+        mpp = (mpp_x + mpp_y) / 2
+
+        if mpp < min(res_range) or mpp > max(res_range):
+            del self.slide
+            return False
         
         del self.slide
-
-        return check
+        return True
 
     def load_slide(self, slide_path: str):
         self.slide = openslide.OpenSlide(slide_path)
@@ -875,17 +880,17 @@ class WSIHandler:
             print("The following slides are missing in folder: ", slide_names)
             print("###############################################")
 
-        if self.config["check_magnification"]:
-            print("Checking maximum magnification level:")
+        if self.config["check_resolution"]:
+            print("Checking pixel resolution per slide:")
             failed_slides = []
             for slide in tqdm(slide_list):
                 slide_name = slide.stem
                 if "TCGA" in str(slide):  # Hack for TCGA filenames
                     slide_name = "-".join(slide_name.split("-", 3)[:3])
-                check = self.check_magnification(str(slide), value=40)
+                check = self.check_resolution(str(slide), res_range=[0.22, 0.27])
                 if check is False:
                     failed_slides.append(slide_name)
-            print("The following slides failed the magnification check: ", failed_slides)
+            print("The following slides failed the resolution check: ", failed_slides)
             print("###############################################")
 
         if not len(slide_list) == 0:
