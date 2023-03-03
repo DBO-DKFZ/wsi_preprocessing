@@ -71,13 +71,13 @@ class WSIHandler:
     def check_resolution(self, slide_path: str, res_range=[0.22, 0.27]):
         self.slide = openslide.OpenSlide(slide_path)
 
-        if "openslide.mpp-x" not in self.slide.properties.keys() or "openslide.mpp-y" not in self.slide.properties.keys():
+        try: 
+            scanner, res_x, res_y = self.init_patch_calibration()
+        except:
             del self.slide
             return False
-    
-        mpp_x = float(self.slide.properties["openslide.mpp-x"])
-        mpp_y = float(self.slide.properties["openslide.mpp-y"])
-        mpp = (mpp_x + mpp_y) / 2
+
+        mpp = (res_x + res_y) / 2
 
         if mpp < min(res_range) or mpp > max(res_range):
             del self.slide
@@ -323,7 +323,7 @@ class WSIHandler:
 
         self.output_path = slide_path
 
-    def extract_calibrated_patches(
+    def create_patch_dict_calibrated(
         self,
         tile_dict,
         level,
@@ -333,6 +333,7 @@ class WSIHandler:
         annotation_overlap=0,
         slide_name=None,
         output_format="png",
+        extract_patches=False,
     ):
 
         scaling_factor = int(self.slide.level_downsamples[level])
@@ -348,8 +349,9 @@ class WSIHandler:
             patch_size_px_x = int(np.round(self.config["calibration"]["patch_size_microns"] / self.res_x))
             patch_size_px_y = int(np.round(self.config["calibration"]["patch_size_microns"] / self.res_y))
 
-            tile = np.array(self.slide.read_region((tile_x, tile_y), level=0, size=(tile_size_px, tile_size_px)))
-            tile = tile[:, :, 0:3]
+            if extract_patches:
+                tile = np.array(self.slide.read_region((tile_x, tile_y), level=0, size=(tile_size_px, tile_size_px)))
+                tile = tile[:, :, 0:3]
 
             if tile_dict[tile_key]["annotated"]:
                 px_overlap_x = int(patch_size_px_x * annotation_overlap)
@@ -398,10 +400,11 @@ class WSIHandler:
                     global_x = patch_x + tile_x
                     global_y = patch_y + tile_y
 
-                    patch = tile[patch_y : patch_y + patch_size_px_y, patch_x : patch_x + patch_size_px_x, :]
+                    if extract_patches:
+                        patch = tile[patch_y : patch_y + patch_size_px_y, patch_x : patch_x + patch_size_px_x, :]
 
-                    if np.sum(patch) == 0:
-                        break
+                        if np.sum(patch) == 0:
+                            break
 
                     # check if the patch is annotated
                     annotated = False
@@ -422,11 +425,12 @@ class WSIHandler:
 
                             file_name = slide_name + "_" + str(global_x) + "_" + str(global_y) + "." + output_format
 
-                            if self.config["calibration"]["resize"]:
-                                patch = cv2.resize(patch, (self.config["patch_size"], self.config["patch_size"]))
+                            if extract_patches:
+                                if self.config["calibration"]["resize"]:
+                                    patch = cv2.resize(patch, (self.config["patch_size"], self.config["patch_size"]))
 
-                            patch = Image.fromarray(patch)
-                            patch.save(os.path.join(self.output_path, label, file_name), format=output_format)
+                                patch = Image.fromarray(patch)
+                                patch.save(os.path.join(self.output_path, label, file_name), format=output_format)
 
                             patch_dict.update(
                                 {
@@ -448,6 +452,29 @@ class WSIHandler:
                     break
 
         return patch_dict
+
+    def extract_calibrated_patches(
+        self,
+        tile_dict,
+        level,
+        annotations,
+        label_dict,
+        overlap=0,
+        annotation_overlap=0,
+        slide_name=None,
+        output_format="png",
+    ):
+        self.create_patch_dict_calibrated(
+        tile_dict,
+        level,
+        annotations,
+        label_dict,
+        overlap,
+        annotation_overlap,
+        slide_name,
+        output_format,
+        extract_patches=True,
+    )
 
     def create_patch_dict(
         self,
@@ -687,7 +714,7 @@ class WSIHandler:
     def init_generic_tiff(self):
 
         unit_dict = {"milimeter": 1000, "centimeter": 10000, "meter": 1000000}
-        self.scanner = "generic-tiff"
+        scanner = "generic-tiff"
 
         assert self.slide.properties["tiff.ResolutionUnit"] in unit_dict.keys(), (
             "Unknown unit " + self.slide.properties["tiff.ResolutionUnit"]
@@ -696,14 +723,18 @@ class WSIHandler:
         factor = unit_dict[self.slide.properties["tiff.ResolutionUnit"]]
 
         # convert to mpp
-        self.res_x = factor / float(self.slide.properties["tiff.XResolution"])
-        self.res_y = factor / float(self.slide.properties["tiff.YResolution"])
+        res_x = factor / float(self.slide.properties["tiff.XResolution"])
+        res_y = factor / float(self.slide.properties["tiff.YResolution"])
+        
+        return scanner, res_x, res_y
 
     def init_aperio(self):
-        self.scanner = "aperio"
+        scanner = "aperio"
 
-        self.res_x = float(self.slide.properties["openslide.mpp-x"])
-        self.res_y = float(self.slide.properties["openslide.mpp-y"])
+        res_x = float(self.slide.properties["openslide.mpp-x"])
+        res_y = float(self.slide.properties["openslide.mpp-y"])
+
+        return scanner, res_x, res_y
 
     def init_patch_calibration(self):
 
@@ -711,14 +742,15 @@ class WSIHandler:
 
         # check scanner type
         if self.slide.properties["openslide.vendor"] == "aperio":
-            self.init_aperio()
+            scanner, res_x, res_y = self.init_aperio()
         elif self.slide.properties["openslide.vendor"] == "generic-tiff":
-            self.init_generic_tiff()
+            scanner, res_x, res_y = self.init_generic_tiff()
 
         # future vendors
         # elif ...
 
-        assert self.scanner, "Not integrated scanner type, aborting"
+        assert scanner, "Not integrated scanner type, aborting"
+        return scanner, res_x, res_y
 
     def process_slide(self, slide: Path):
 
@@ -746,7 +778,10 @@ class WSIHandler:
         level = self.load_slide(slide_path=str(slide))
 
         if self.config["calibration"]["use_non_pixel_lengths"]:
-            self.init_patch_calibration()
+            scanner, res_x, res_y = self.init_patch_calibration()
+            self.scanner = scanner
+            self.res_x = res_x
+            self.res_y = res_y
 
         if self.config["use_tissue_detection"]:
             mask, level = self.apply_tissue_detection(
@@ -774,9 +809,9 @@ class WSIHandler:
 
         self.save_thumbnail(mask, level=level, slide_name=slide_name, output_format=self.config["output_format"])
 
-        if self.config["extract_patches"]:
-            # Calibrated or non calibrated patch sizes
-            if self.config["calibration"]["use_non_pixel_lengths"]:
+        # Calibrated or non calibrated patch sizes
+        if self.config["calibration"]["use_non_pixel_lengths"]:
+            if self.config["extract_patches"]:
                 patch_dict = self.extract_calibrated_patches(
                     tile_dict,
                     level,
@@ -788,6 +823,18 @@ class WSIHandler:
                     output_format=self.config["output_format"],
                 )
             else:
+                patch_dict = self.create_patch_dict_calibrated(
+                    tile_dict,
+                    level,
+                    self.annotation_dict,
+                    self.config["label_dict"],
+                    overlap=self.config["overlap"],
+                    annotation_overlap=self.config["annotation_overlap"],
+                    slide_name=slide_name,
+                    output_format=self.config["output_format"],
+                )
+        else:
+            if self.config["extract_patches"]:
                 patch_dict = self.extract_patches(
                     tile_dict,
                     level,
@@ -799,18 +846,18 @@ class WSIHandler:
                     slide_name=slide_name,
                     output_format=self.config["output_format"],
                 )
-        else:
-            patch_dict = self.create_patch_dict(
-                    tile_dict,
-                    level,
-                    self.annotation_dict,
-                    self.config["label_dict"],
-                    overlap=self.config["overlap"],
-                    annotation_overlap=self.config["annotation_overlap"],
-                    patch_size=self.config["patch_size"],
-                    slide_name=slide_name,
-                    output_format=self.config["output_format"],
-                )
+            else:
+                patch_dict = self.create_patch_dict(
+                        tile_dict,
+                        level,
+                        self.annotation_dict,
+                        self.config["label_dict"],
+                        overlap=self.config["overlap"],
+                        annotation_overlap=self.config["annotation_overlap"],
+                        patch_size=self.config["patch_size"],
+                        slide_name=slide_name,
+                        output_format=self.config["output_format"],
+                    )
 
         self.export_dict(patch_dict, self.config["metadata_format"], "tile_information")
 
