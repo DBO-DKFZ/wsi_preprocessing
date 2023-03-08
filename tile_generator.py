@@ -464,7 +464,7 @@ class WSIHandler:
         slide_name=None,
         output_format="png",
     ):
-        self.create_patch_dict_calibrated(
+        patch_dict = self.create_patch_dict_calibrated(
         tile_dict,
         level,
         annotations,
@@ -474,7 +474,8 @@ class WSIHandler:
         slide_name,
         output_format,
         extract_patches=True,
-    )
+        )
+        return patch_dict
 
     def create_patch_dict(
         self,
@@ -638,8 +639,8 @@ class WSIHandler:
         patch_size,
         slide_name,
         output_format,
-        extract_patches=True)
-
+        extract_patches=True,
+        )
         return patch_dict
 
     def export_dict(self, dict, metadata_format, filename):
@@ -859,7 +860,10 @@ class WSIHandler:
                         output_format=self.config["output_format"],
                     )
 
-        self.export_dict(patch_dict, self.config["metadata_format"], "tile_information")
+        if patch_dict is not None:
+            self.export_dict(patch_dict, self.config["metadata_format"], "tile_information")
+        else:
+            print("patch_dict for slide ", slide_name, " was empty.")
 
         self.export_slide_info(slide_name, scaling_factor=int(self.slide.level_downsamples[level]))
 
