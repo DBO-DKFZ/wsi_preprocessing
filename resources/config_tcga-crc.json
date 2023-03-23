@@ -2,7 +2,7 @@
     "check_resolution": false,
     "use_tissue_detection": true,
     "remove_top_border": false,
-    "extract_patches": true,
+    "save_patches": true,
     "tissue_coverage": 0.8,
     "processing_level": 3,
     "blocked_threads": 2,

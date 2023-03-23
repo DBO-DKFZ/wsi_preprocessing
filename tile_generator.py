@@ -323,7 +323,7 @@ class WSIHandler:
 
         self.output_path = slide_path
 
-    def create_patch_dict_calibrated(
+    def extract_calibrated_patches(
         self,
         tile_dict,
         level,
@@ -333,7 +333,7 @@ class WSIHandler:
         annotation_overlap=0,
         slide_name=None,
         output_format="png",
-        extract_patches=False,
+        save_patches=False,
     ):
 
         scaling_factor = int(self.slide.level_downsamples[level])
@@ -349,7 +349,7 @@ class WSIHandler:
             patch_size_px_x = int(np.round(self.config["calibration"]["patch_size_microns"] / self.res_x))
             patch_size_px_y = int(np.round(self.config["calibration"]["patch_size_microns"] / self.res_y))
 
-            if extract_patches:
+            if save_patches:
                 tile = np.array(self.slide.read_region((tile_x, tile_y), level=0, size=(tile_size_px, tile_size_px)))
                 tile = tile[:, :, 0:3]
 
@@ -400,7 +400,7 @@ class WSIHandler:
                     global_x = patch_x + tile_x
                     global_y = patch_y + tile_y
 
-                    if extract_patches:
+                    if save_patches:
                         patch = tile[patch_y : patch_y + patch_size_px_y, patch_x : patch_x + patch_size_px_x, :]
 
                         if np.sum(patch) == 0:
@@ -425,7 +425,7 @@ class WSIHandler:
 
                             file_name = slide_name + "_" + str(global_x) + "_" + str(global_y) + "." + output_format
 
-                            if extract_patches:
+                            if save_patches:
                                 if self.config["calibration"]["resize"]:
                                     patch = cv2.resize(patch, (self.config["patch_size"], self.config["patch_size"]))
 
@@ -453,31 +453,7 @@ class WSIHandler:
 
         return patch_dict
 
-    def extract_calibrated_patches(
-        self,
-        tile_dict,
-        level,
-        annotations,
-        label_dict,
-        overlap=0,
-        annotation_overlap=0,
-        slide_name=None,
-        output_format="png",
-    ):
-        patch_dict = self.create_patch_dict_calibrated(
-        tile_dict,
-        level,
-        annotations,
-        label_dict,
-        overlap,
-        annotation_overlap,
-        slide_name,
-        output_format,
-        extract_patches=True,
-        )
-        return patch_dict
-
-    def create_patch_dict(
+    def extract_patches(
         self,
         tile_dict,
         level,
@@ -488,7 +464,7 @@ class WSIHandler:
         patch_size=256,
         slide_name=None,
         output_format="png",
-        extract_patches=False,
+        save_patches=False,
     ):
         # TODO: Only working with binary labels right now
         px_overlap = int(patch_size * overlap)
@@ -508,7 +484,7 @@ class WSIHandler:
                 tile_y = tile_dict[tile_key]["y"] * scaling_factor
                 tile_size = tile_dict[tile_key]["size"] * scaling_factor
 
-                if extract_patches:
+                if save_patches:
                     tile = np.array(self.slide.read_region((tile_x, tile_y), level=0, size=(tile_size, tile_size)))
                     tile = tile[:, :, 0:3]
 
@@ -559,7 +535,7 @@ class WSIHandler:
                         global_x = patch_x + tile_x
                         global_y = patch_y + tile_y
 
-                        if extract_patches:
+                        if save_patches:
                             patch = tile[patch_y : patch_y + patch_size, patch_x : patch_x + patch_size, :]
 
                             if np.sum(patch) == 0:
@@ -592,7 +568,7 @@ class WSIHandler:
                                         str(patch_nb) + "_" + str(global_x) + "_" + str(global_y) + "." + output_format
                                     )
 
-                                if extract_patches:
+                                if save_patches:
                                     patch = Image.fromarray(patch)
                                     patch.save(os.path.join(self.output_path, label, file_name), format=output_format)
 
@@ -615,32 +591,6 @@ class WSIHandler:
                     if stop_y:
                         break
 
-        return patch_dict
-    
-    def extract_patches(
-        self,
-        tile_dict,
-        level,
-        annotations,
-        label_dict,
-        overlap=0,
-        annotation_overlap=0,
-        patch_size=256,
-        slide_name=None,
-        output_format="png",
-    ):
-        patch_dict = self.create_patch_dict(
-        tile_dict,
-        level,
-        annotations,
-        label_dict,
-        overlap,
-        annotation_overlap,
-        patch_size,
-        slide_name,
-        output_format,
-        extract_patches=True,
-        )
         return patch_dict
 
     def export_dict(self, dict, metadata_format, filename):
@@ -812,7 +762,7 @@ class WSIHandler:
 
         # Calibrated or non calibrated patch sizes
         if self.config["calibration"]["use_non_pixel_lengths"]:
-            if self.config["extract_patches"]:
+            if self.config["save_patches"]:
                 patch_dict = self.extract_calibrated_patches(
                     tile_dict,
                     level,
@@ -822,9 +772,10 @@ class WSIHandler:
                     annotation_overlap=self.config["annotation_overlap"],
                     slide_name=slide_name,
                     output_format=self.config["output_format"],
+                    save_patches=True,
                 )
             else:
-                patch_dict = self.create_patch_dict_calibrated(
+                patch_dict = self.extract_calibrated_patches(
                     tile_dict,
                     level,
                     self.annotation_dict,
@@ -833,9 +784,10 @@ class WSIHandler:
                     annotation_overlap=self.config["annotation_overlap"],
                     slide_name=slide_name,
                     output_format=self.config["output_format"],
+                    save_patches=False,
                 )
         else:
-            if self.config["extract_patches"]:
+            if self.config["save_patches"]:
                 patch_dict = self.extract_patches(
                     tile_dict,
                     level,
@@ -846,19 +798,21 @@ class WSIHandler:
                     patch_size=self.config["patch_size"],
                     slide_name=slide_name,
                     output_format=self.config["output_format"],
+                    save_patches=True,
                 )
             else:
-                patch_dict = self.create_patch_dict(
-                        tile_dict,
-                        level,
-                        self.annotation_dict,
-                        self.config["label_dict"],
-                        overlap=self.config["overlap"],
-                        annotation_overlap=self.config["annotation_overlap"],
-                        patch_size=self.config["patch_size"],
-                        slide_name=slide_name,
-                        output_format=self.config["output_format"],
-                    )
+                patch_dict = self.extract_patches(
+                    tile_dict,
+                    level,
+                    self.annotation_dict,
+                    self.config["label_dict"],
+                    overlap=self.config["overlap"],
+                    annotation_overlap=self.config["annotation_overlap"],
+                    patch_size=self.config["patch_size"],
+                    slide_name=slide_name,
+                    output_format=self.config["output_format"],
+                    save_patches=False,
+                )
 
         if patch_dict is not None:
             self.export_dict(patch_dict, self.config["metadata_format"], "tile_information")
