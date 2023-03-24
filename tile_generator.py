@@ -2,6 +2,11 @@
 import json
 import multiprocessing
 import os
+import shutil
+
+# Zipfile
+import io
+import zipfile
 
 # Advanced
 import xml.etree.ElementTree as ET
@@ -309,13 +314,14 @@ class WSIHandler:
 
     def make_dirs(self, output_path, slide_name, label_dict, annotated):
         slide_path = os.path.join(output_path, slide_name)
+        if not os.path.exists(slide_path):
+            os.makedirs(slide_path)
+
         if not annotated:
             unlabeled_path = os.path.join(slide_path, "unlabeled")
             if not os.path.exists(unlabeled_path):
                 os.makedirs(unlabeled_path)
         else:
-            if not os.path.exists(slide_path):
-                os.makedirs(slide_path)
             for label in label_dict:
                 sub_path = os.path.join(slide_path, label)
                 if not os.path.exists(sub_path):
@@ -334,6 +340,7 @@ class WSIHandler:
         slide_name=None,
         output_format="png",
         save_patches=False,
+        zip_patches=False,
     ):
 
         scaling_factor = int(self.slide.level_downsamples[level])
@@ -432,11 +439,21 @@ class WSIHandler:
                                 patch = Image.fromarray(patch)
                                 patch.save(os.path.join(self.output_path, label, file_name), format=output_format)
 
+                                # Too slow to append patches directly to zip directory
+                                # if zip_patches:
+                                #     img_buffer = io.BytesIO()
+                                #     patch.save(img_buffer, format=output_format)
+                                #     img_buffer.seek(0)
+                                #     with zipfile.ZipFile(os.path.join(self.output_path, label + ".zip"), mode="a") as zip_file:
+                                #         zip_file.writestr(file_name, img_buffer.read())
+                                # else:
+                                #     patch.save(os.path.join(self.output_path, label, file_name), format=output_format)
+
                             patch_dict.update(
                                 {
                                     patch_nb: {
                                         "slide_name": slide_name,
-                                        "patch_path": os.path.join(label, file_name),
+                                        "patch_path": os.path.join(label + ".zip", file_name) if zip_patches else os.path.join(label, file_name),
                                         "label": label,
                                         "x_pos": global_x,
                                         "y_pos": global_y,
@@ -465,6 +482,7 @@ class WSIHandler:
         slide_name=None,
         output_format="png",
         save_patches=False,
+        zip_patches=False,
     ):
         # TODO: Only working with binary labels right now
         px_overlap = int(patch_size * overlap)
@@ -576,7 +594,7 @@ class WSIHandler:
                                     {
                                         patch_nb: {
                                             "slide_name": slide_name,
-                                            "patch_path": os.path.join(label, file_name),
+                                            "patch_path": os.path.join(label + ".zip", file_name) if zip_patches else os.path.join(label, file_name),
                                             "label": label,
                                             "tumor_coverage": label_percentage,
                                             "x_pos": global_x,
@@ -605,6 +623,14 @@ class WSIHandler:
             df.to_csv(file, index=False)
         else:
             print("Could not write metadata. Metadata format has to be json or csv")
+
+    def zip_patch_directories(self):
+        patch_dirs = [f for f in os.listdir(self.output_path) if os.path.isdir(os.path.join(self.output_path, f))]
+        for dir in patch_dirs:
+            with zipfile.ZipFile(os.path.join(self.output_path, dir + ".zip"), mode="w") as zip_file:
+                for file_name in os.listdir(os.path.join(self.output_path, dir)):
+                    zip_file.write(os.path.join(self.output_path, dir, file_name), arcname=file_name)
+            shutil.rmtree(os.path.join(self.output_path, dir))
 
     def export_slide_info(self, slide_name, scaling_factor):
         if self.config["slideinfo_dir"] is not None:
@@ -760,64 +786,47 @@ class WSIHandler:
 
         self.save_thumbnail(mask, level=level, slide_name=slide_name, output_format=self.config["output_format"])
 
+        import time 
+        start_time = time.time()
         # Calibrated or non calibrated patch sizes
         if self.config["calibration"]["use_non_pixel_lengths"]:
-            if self.config["save_patches"]:
-                patch_dict = self.extract_calibrated_patches(
-                    tile_dict,
-                    level,
-                    self.annotation_dict,
-                    self.config["label_dict"],
-                    overlap=self.config["overlap"],
-                    annotation_overlap=self.config["annotation_overlap"],
-                    slide_name=slide_name,
-                    output_format=self.config["output_format"],
-                    save_patches=True,
-                )
-            else:
-                patch_dict = self.extract_calibrated_patches(
-                    tile_dict,
-                    level,
-                    self.annotation_dict,
-                    self.config["label_dict"],
-                    overlap=self.config["overlap"],
-                    annotation_overlap=self.config["annotation_overlap"],
-                    slide_name=slide_name,
-                    output_format=self.config["output_format"],
-                    save_patches=False,
-                )
+            patch_dict = self.extract_calibrated_patches(
+                tile_dict,
+                level,
+                self.annotation_dict,
+                self.config["label_dict"],
+                overlap=self.config["overlap"],
+                annotation_overlap=self.config["annotation_overlap"],
+                slide_name=slide_name,
+                output_format=self.config["output_format"],
+                save_patches=self.config["save_patches"],
+                zip_patches=self.config["zip_patches"],
+            )
         else:
-            if self.config["save_patches"]:
-                patch_dict = self.extract_patches(
-                    tile_dict,
-                    level,
-                    self.annotation_dict,
-                    self.config["label_dict"],
-                    overlap=self.config["overlap"],
-                    annotation_overlap=self.config["annotation_overlap"],
-                    patch_size=self.config["patch_size"],
-                    slide_name=slide_name,
-                    output_format=self.config["output_format"],
-                    save_patches=True,
-                )
-            else:
-                patch_dict = self.extract_patches(
-                    tile_dict,
-                    level,
-                    self.annotation_dict,
-                    self.config["label_dict"],
-                    overlap=self.config["overlap"],
-                    annotation_overlap=self.config["annotation_overlap"],
-                    patch_size=self.config["patch_size"],
-                    slide_name=slide_name,
-                    output_format=self.config["output_format"],
-                    save_patches=False,
-                )
+            patch_dict = self.extract_patches(
+                tile_dict,
+                level,
+                self.annotation_dict,
+                self.config["label_dict"],
+                overlap=self.config["overlap"],
+                annotation_overlap=self.config["annotation_overlap"],
+                patch_size=self.config["patch_size"],
+                slide_name=slide_name,
+                output_format=self.config["output_format"],
+                save_patches=self.config["save_patches"],
+                zip_patches=self.config["zip_patches"],
+            )
+        # print("Generating patches took ", time.time() - start_time, "s")
 
         if patch_dict is not None:
             self.export_dict(patch_dict, self.config["metadata_format"], "tile_information")
         else:
             print("patch_dict for slide ", slide_name, " was empty.")
+
+        if self.config["zip_patches"]:
+            start_time = time.time()
+            self.zip_patch_directories()
+            # print("Zipping took ", time.time() - start_time, "s")
 
         self.export_slide_info(slide_name, scaling_factor=int(self.slide.level_downsamples[level]))
 
