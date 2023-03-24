@@ -3,7 +3,7 @@
     "use_tissue_detection": true,
     "remove_top_border": false,
     "save_patches": true,
-    "zip_patches": true,
+    "zip_patches": false,
     "tissue_coverage": 0.8,
     "processing_level": 3,
     "blocked_threads": 2,
