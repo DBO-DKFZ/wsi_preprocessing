@@ -74,7 +74,11 @@ class WSIHandler:
         return config
     
     def check_resolution(self, slide_path: str, res_range=[0.22, 0.27]):
-        self.slide = openslide.OpenSlide(slide_path)
+        try:
+            self.slide = openslide.OpenSlide(slide_path)
+        except:
+            print("Error when reading slide", slide_path)
+            return False
 
         try: 
             scanner, res_x, res_y = self.init_patch_calibration()
@@ -840,9 +844,25 @@ class WSIHandler:
         extensions = [".tif", ".svs"]
         slide_list = []
 
-        for extension in extensions:
-            for file in Path(self.config["slides_dir"]).resolve().glob("**/*" + extension):
-                slide_list.append(file)
+        if "MCO" in self.config["slides_dir"]:
+            folders = [
+                "MCO0001-1000",
+                "MCO1001-2000",
+                "MCO2001-3000",
+                "MCO3001-4000",
+                "MCO4001-5000",
+                "MCO5001-6000",
+                "MCO6001-7000",
+            ]
+            for folder in folders:
+                path = Path(self.config["slides_dir"]) / folder
+                assert path.is_dir()
+                for extension in extensions:
+                    slide_list.extend(path.glob("*" + extension))
+        else:
+            for extension in extensions:
+                for file in Path(self.config["slides_dir"]).resolve().glob("**/*" + extension):
+                    slide_list.append(file)
         slide_list = sorted(slide_list)
 
         self.annotation_list = []
