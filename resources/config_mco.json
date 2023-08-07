@@ -16,6 +16,7 @@
         "patch_size_microns": 64,
         "resize": true
     },
+    "dataset": "MCO",
     "slides_dir": "/mnt/smb/OE0601-Projekte/TPI/MCO",
     "slideinfo_dir": "/mnt/ssd/Data/MCO-CLAM",
     "annotation_dir": "",

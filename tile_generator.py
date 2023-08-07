@@ -461,7 +461,8 @@ class WSIHandler:
                                         "label": label,
                                         "x_pos": global_x,
                                         "y_pos": global_y,
-                                        "patch_size": patch_size_px_x,
+                                        "patch_size_x": patch_size_px_x,
+                                        "patch_size_y": patch_size_px_y,
                                         "resized": self.config["calibration"]["resize"],
                                     }
                                 }
@@ -603,7 +604,8 @@ class WSIHandler:
                                             "tumor_coverage": label_percentage,
                                             "x_pos": global_x,
                                             "y_pos": global_y,
-                                            "patch_size": patch_size,
+                                            "patch_size_x": patch_size,
+                                            "patch_size_y": patch_size,
                                         }
                                     }
                                 )
@@ -636,7 +638,7 @@ class WSIHandler:
                     zip_file.write(os.path.join(self.output_path, dir, file_name), arcname=file_name)
             shutil.rmtree(os.path.join(self.output_path, dir))
 
-    def export_slide_info(self, slide_name, scaling_factor):
+    def export_slide_info(self, slide_p: Path, slide_name: str, scaling_factor: int):
         if self.config["slideinfo_dir"] is not None:
             slideinfo_file = Path(self.config["slideinfo_dir"]) / "slide_information.csv"
             assert slideinfo_file.is_file(), "slide_information.csv does not exist"
@@ -644,12 +646,12 @@ class WSIHandler:
             if "Addition" in slide_df.columns:
                 slide_df["Pseudonym"] = slide_df["Pseudonym"] + slide_df["Addition"].fillna("")
             dict = {
-                "slide_name": slide_name,
+                "slide_filename": slide_p.stem,
                 "slide_label": slide_df[slide_df["Pseudonym"] == slide_name]["Label"].item(),
             }
         else:
             dict = {
-                "slide_name": slide_name,
+                "slide_filename": slide_p.stem,
             }
         dict.update({"scaling_factor": scaling_factor})
         dict.update({"magnification": int(self.slide.properties["openslide.objective-power"])})
@@ -733,13 +735,13 @@ class WSIHandler:
         assert scanner, "Not integrated scanner type, aborting"
         return scanner, res_x, res_y
 
-    def process_slide(self, slide: Path):
+    def process_slide(self, slide_p: Path):
 
-        if "TCGA" in str(slide):  # Hack for TCGA filenames
-            slide_name = slide.stem
+        if "TCGA" in str(slide_p):  # Hack for TCGA filenames
+            slide_name = slide_p.stem
             slide_name = "-".join(slide_name.split("-", 3)[:3])
         else:
-            slide_name = os.path.basename(slide)
+            slide_name = os.path.basename(slide_p)
             slide_name = os.path.splitext(slide_name)[0]
 
         # try:
@@ -756,7 +758,7 @@ class WSIHandler:
             annotated = False
             self.annotation_dict = None
 
-        level = self.load_slide(slide_path=str(slide))
+        level = self.load_slide(slide_path=str(slide_p))
 
         if self.config["calibration"]["use_non_pixel_lengths"]:
             scanner, res_x, res_y = self.init_patch_calibration()
@@ -832,7 +834,7 @@ class WSIHandler:
             self.zip_patch_directories()
             # print("Zipping took ", time.time() - start_time, "s")
 
-        self.export_slide_info(slide_name, scaling_factor=int(self.slide.level_downsamples[level]))
+        self.export_slide_info(slide_p, slide_name, scaling_factor=int(self.slide.level_downsamples[level]))
 
         print("Finished slide ", slide_name)
 
@@ -844,7 +846,7 @@ class WSIHandler:
         extensions = [".tif", ".svs"]
         slide_list = []
 
-        if "MCO" in self.config["slides_dir"]:
+        if self.config["dataset"] == "MCO":
             folders = [
                 "MCO0001-1000",
                 "MCO1001-2000",
@@ -907,7 +909,9 @@ class WSIHandler:
                     slide_name = "-".join(slide_name.split("-", 3)[:3])
                 if slide_name in slide_names:
                     selected_slides.append(slide)
-                    slide_names.remove(slide_name)
+                    # Problem: For TCGA there exist multiple diagnostic slides for one slide_name
+                    # Current approach: Choose the first diagnostic slide
+                    slide_names.remove(slide_name)  
             slide_list = selected_slides
             print("Processing", len(slide_list), "selected slides")
             print("###############################################")
