@@ -646,12 +646,12 @@ class WSIHandler:
             if "Addition" in slide_df.columns:
                 slide_df["Pseudonym"] = slide_df["Pseudonym"] + slide_df["Addition"].fillna("")
             dict = {
-                "slide_filename": slide_p.stem,
+                "slide_filename": slide_p.name,  # Use name instead of stem to include suffix
                 "slide_label": slide_df[slide_df["Pseudonym"] == slide_name]["Label"].item(),
             }
         else:
             dict = {
-                "slide_filename": slide_p.stem,
+                "slide_filename": slide_p.name,
             }
         dict.update({"scaling_factor": scaling_factor})
         dict.update({"magnification": int(self.slide.properties["openslide.objective-power"])})
@@ -737,12 +737,12 @@ class WSIHandler:
 
     def process_slide(self, slide_p: Path):
 
-        if "TCGA" in str(slide_p):  # Hack for TCGA filenames
-            slide_name = slide_p.stem
-            slide_name = "-".join(slide_name.split("-", 3)[:3])
-        else:
-            slide_name = os.path.basename(slide_p)
-            slide_name = os.path.splitext(slide_name)[0]
+        slide_name = slide_p.stem
+        if "TCGA" in slide_name:  # Remove case_id from slide_name
+            slide_name = slide_name.split(".")[0]
+        # else:
+        #     slide_name = os.path.basename(slide_p)
+        #     slide_name = os.path.splitext(slide_name)[0]
 
         # try:
         print("Processing", slide_name, "process id is", os.getpid())
@@ -905,13 +905,11 @@ class WSIHandler:
             selected_slides = []
             for slide in slide_list:
                 slide_name = slide.stem
-                if "TCGA" in str(slide):  # Hack for TCGA filenames
-                    slide_name = "-".join(slide_name.split("-", 3)[:3])
+                if "TCGA" in str(slide):  # Remove case_id from slide_name
+                    slide_name = slide_name.split(".")[0]
                 if slide_name in slide_names:
                     selected_slides.append(slide)
-                    # Problem: For TCGA there exist multiple diagnostic slides for one slide_name
-                    # Current approach: Choose the first diagnostic slide
-                    slide_names.remove(slide_name)  
+                    slide_names.remove(slide_name)  # Make sure mapping from Pseudonym in slide_information.csv to slide filename is unique!
             slide_list = selected_slides
             print("Processing", len(slide_list), "selected slides")
             print("###############################################")
