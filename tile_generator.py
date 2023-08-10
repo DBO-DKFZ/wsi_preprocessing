@@ -921,8 +921,8 @@ class WSIHandler:
             failed_slides = []
             for slide in tqdm(slide_list):
                 slide_name = slide.stem
-                if "TCGA" in str(slide):  # Hack for TCGA filenames
-                    slide_name = "-".join(slide_name.split("-", 3)[:3])
+                if "TCGA" in str(slide):  # Remove case_id from slide_name
+                    slide_name = slide_name.split(".")[0]
                 check = self.check_resolution(str(slide), res_range=[0.22, 0.27])
                 if check is False:
                     failed_slides.append(slide_name)
