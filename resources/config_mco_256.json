@@ -1,0 +1,43 @@
+{
+    "check_resolution": false,
+    "use_tissue_detection": true,
+    "remove_top_border": false,
+    "save_patches": false,
+    "zip_patches": false,
+    "tissue_coverage": 0.8,
+    "processing_level": 3,
+    "blocked_threads": 2,
+    "patches_per_tile": 4,
+    "overlap": 0.0,
+    "annotation_overlap": 0.0,
+    "patch_size": 256,
+    "calibration": {
+        "use_non_pixel_lengths": false,
+        "patch_size_microns": 64,
+        "resize": false
+    },
+    "dataset": "MCO",
+    "slides_dir": "/mnt/smb/OE0601-Projekte/TPI/MCO",
+    "slideinfo_dir": "/mnt/ssd/Data/MCO-SCalib",
+    "annotation_dir": "",
+    "annotation_file_format": "xml",
+    "output_path": "/mnt/ssd/Data/MCO-SCalib/patches_256",
+    "skip_unlabeled_slides": false,
+    "save_annotated_only": false,
+    "output_format": "jpeg",
+    "metadata_format": "csv",
+    "write_slideinfo": false,
+    "show_mode": false,
+    "label_dict": {
+        "non_tumor": {
+            "type": "==",
+            "threshold": 0,
+            "annotated": false
+        },
+        "tumor": {
+            "type": ">",
+            "threshold": 0,
+            "annotated": true
+        }
+    }
+}
