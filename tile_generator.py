@@ -936,8 +936,11 @@ class WSIHandler:
                 pool.map(self.process_slide, slide_list)
 
             else:
-                for slide in slide_list:
+                for idx in range(len(slide_list)):
+                    slide = slide_list[idx]
                     self.process_slide(slide)
+                    # if idx > 1:
+                    #     break
 
             # Save label proportion per slide
             if self.config["write_slideinfo"]:

@@ -10,18 +10,18 @@
     "patches_per_tile": 4,
     "overlap": 0.0,
     "annotation_overlap": 0.0,
-    "patch_size": 256,
+    "patch_size": 512,
     "calibration": {
-        "use_non_pixel_lengths": true,
-        "patch_size_microns": 64,
-        "resize": true
+        "use_non_pixel_lengths": false,
+        "patch_size_microns": 128,
+        "resize": false
     },
     "dataset": "TCGA-CRC",
     "slides_dir": "/mnt/ssd/Data/cluster",
     "slideinfo_dir": "/mnt/ssd/Data/TCGA-CRC-SCalib",
     "annotation_dir": "",
     "annotation_file_format": "xml",
-    "output_path": "/mnt/ssd/Data/TCGA-CRC-SCalib/patches",
+    "output_path": "/mnt/ssd/Data/TCGA-CRC-SCalib/patches_512",
     "skip_unlabeled_slides": false,
     "save_annotated_only": false,
     "output_format": "jpeg",
