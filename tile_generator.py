@@ -285,7 +285,7 @@ class WSIHandler:
                 if label_percentage < label_dict[label]["threshold"]:
                     return label, label_percentage
 
-        return None
+        return None, None
 
     def make_dirs(self, output_path, slide_name, label_dict, annotated):
         try:
@@ -397,7 +397,7 @@ class WSIHandler:
                         patch_mask = tile_annotation_mask[
                             patch_y : patch_y + patch_size_px_y, patch_x : patch_x + patch_size_px_x
                         ]
-                        label = self.check_for_label(label_dict, patch_mask)
+                        label, _ = self.check_for_label(label_dict, patch_mask)
                         if label is not None:
                             if self.config["label_dict"][label]["annotated"]:
                                 annotated = True
