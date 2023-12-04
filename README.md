@@ -25,23 +25,24 @@ https://github.com/openslide/openslide-python/issues/58#issuecomment-883446558
 
 ### Config Explanation:
 
-| Dictionary Entry | Explanation |
-| ----------- | ----------- |
-| tissue_coverage | Threshold [0,1] for how much tissue coverage is necessary, default is 0.75|
-| processing_level | Level of downscaling by openslide - Lowering the level will increase precision but more time is needed, default is 5| 
-| blocked_threads |Number of threads that wont be used by the program|
-| patches_per_tile | Number of patches used for lower resolution operations like tissue detection | 
-| overlap | Value [0,1[ to set the overlap between neighbouring unannotated patches |
-| annotation_overlap | Value [0,1[ to set the overlap between neighbouring annotated patches | 
-| patch_size | Output pixel size of the quadratic patches |
-| slides_dir | Directory where the different slides and subdirs are located  | 
-| annotation_dir | Directory where the annotations are located |
-| annotation_file_format | File format of the input annotations ("xml","geojson")| 
-| output_path | Output directory to where the resulting images will be stored |
-| skip_unlabeled_slides | Boolean to skip slides without an annotation file | 
-| save_annotated_only | Boolean to only save annotated patches |
-| output_format | Image output format default is "png" |
-| show_mode | Boolean to enable plotting of some intermediate results/visualizations | 
-| label_dict |  Structure to set up the operator and the threshold for checking the coverage of a certain class|
-| type | Operator type [ "==", ">=", "<="]| 
-| threshold | Coverage threshold for the individual class |
+| Dictionary Entry       | Explanation                                                                                                          |
+|------------------------|----------------------------------------------------------------------------------------------------------------------|
+| tissue_coverage        | Threshold [0,1] for how much tissue coverage is necessary, default is 0.75                                           |
+| processing_level       | Level of downscaling by openslide - Lowering the level will increase precision but more time is needed, default is 5 | 
+| blocked_threads        | Number of threads that wont be used by the program                                                                   |
+| patches_per_tile       | Number of patches used for lower resolution operations like tissue detection                                         | 
+| overlap                | Value [0,1[ to set the overlap between neighbouring unannotated patches                                              |
+| annotation_overlap     | Value [0,1[ to set the overlap between neighbouring annotated patches                                                | 
+| patch_size             | Output pixel size of the quadratic patches                                                                           |
+| slides_dir             | Directory where the different slides and subdirs are located                                                         |
+| slides_file            | txt file containing paths to all slides to process (absolute paths)                                                  |
+| annotation_dir         | Directory where the annotations are located                                                                          |
+| annotation_file_format | File format of the input annotations ("xml","geojson")                                                               | 
+| output_path            | Output directory to where the resulting images will be stored                                                        |
+| skip_unlabeled_slides  | Boolean to skip slides without an annotation file                                                                    | 
+| save_annotated_only    | Boolean to only save annotated patches                                                                               |
+| output_format          | Image output format default is "png"                                                                                 |
+| show_mode              | Boolean to enable plotting of some intermediate results/visualizations                                               | 
+| label_dict             | Structure to set up the operator and the threshold for checking the coverage of a certain class                      |
+| type                   | Operator type [ "==", ">=", "<="]                                                                                    | 
+| threshold              | Coverage threshold for the individual class                                                                          |
