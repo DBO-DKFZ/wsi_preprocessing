@@ -52,6 +52,12 @@ class WSIHandler:
         self.res_x = None
         self.res_y = None
 
+    def print_and_log_slide_error(self, slide_name, e, method_name):
+        print(f"Error in slide {slide_name}. The error is: {type(e).__name__}: {e} in method: {method_name}.")  # todo show martin format string
+        with lock:
+            with open(os.path.join(self.config["output_path"], "error_log.txt"), "a") as f:
+                f.write(f"Error in slide {slide_name}. The error is: {type(e).__name__}: {e} in method: {method_name}.")
+
     def load_config(self, config_path):
         assert os.path.exists(config_path), "Cannot find " + config_path
         with open(config_path) as json_file:
@@ -299,10 +305,11 @@ class WSIHandler:
             self.output_path = slide_path
 
         except Exception as e:
-            print("Error in slide", slide_name, "error is:", e)
-            with lock:
-                with open(os.path.join(self.config["output_path"], "error_log.txt"), "a") as f:
-                    f.write("Error: " + str(e) + "  in:  " + slide_name + " function: make_dirs")
+            self.print_and_log_slide_error(slide_name, e, "make_dirs")
+            # print("Error in slide", slide_name, "error is:", e)  todo show martin
+            # with lock:
+            #     with open(os.path.join(self.config["output_path"], "error_log.txt"), "a") as f:
+            #         f.write("Error: " + str(e) + "  in:  " + slide_name + " function: make_dirs")
 
     def extract_calibrated_patches(
         self,
@@ -673,10 +680,11 @@ class WSIHandler:
                 self.annotation_dict = None
 
         except Exception as e:
-            print("Error in slide", slide_name, "error is:", e)
-            with lock:
-                with open(os.path.join(self.config["output_path"], "error_log.txt"), "a") as f:
-                    f.write("Error: " + str(e) + "  in:  " + slide_name + " function: process_slide - load_annotations")
+            self.print_and_log_slide_error(slide_name, e, "process_slide - load_annotations")
+            # print("Error in slide", slide_name, "error is:", e) todo show martin
+            # with lock:
+            #     with open(os.path.join(self.config["output_path"], "error_log.txt"), "a") as f:
+            #         f.write("Error: " + str(e) + "  in:  " + slide_name + " function: process_slide - load_annotations")
             return 0
 
         self.make_dirs(
@@ -690,21 +698,14 @@ class WSIHandler:
         try:
             level = self.load_slide(slide_path)
         except Exception as e:
-            print("Error in slide", slide_name, "error is:", e)
-            with lock:
-                with open(os.path.join(self.config["output_path"], "error_log.txt"), "a") as f:
-                    f.write("Error: " + str(e) + "  in:  " + slide_name + " function: load_slide")
+            self.print_and_log_slide_error(slide_name, e, "load_slide")  # todo technically, this can be moved into the method itself as well
             return 0
 
         if self.config["calibration"]["use_non_pixel_lengths"]:
             try:
                 self.init_patch_calibration()
             except Exception as e:
-                print("Error in slide", slide_name, "error is:", e)
-                with lock:
-                    with open(os.path.join(self.config["output_path"], "error_log.txt"), "a") as f:
-                        f.write(
-                            "Error: " + str(e) + "  in:  " + slide_name + " function: init_patch_calibration")
+                self.print_and_log_slide_error(slide_name, e, "init_patch_calibration")
                 return 0
 
         if self.config["use_tissue_detection"]:
@@ -714,11 +715,7 @@ class WSIHandler:
         try:
             tile_size = self.determine_tile_size(level)
         except Exception as e:
-            print("Error in slide", slide_name, "error is:", e)
-            with lock:
-                with open(os.path.join(self.config["output_path"], "error_log.txt"), "a") as f:
-                    f.write(
-                        "Error: " + str(e) + "  in:  " + slide_name + " function: determine_tile_size")
+            self.print_and_log_slide_error(slide_name, e, "determine_tile_size")
             return 0
         try:
             tile_dict = self.get_relevant_tiles(
@@ -729,11 +726,7 @@ class WSIHandler:
                 show=self.config["show_mode"],
             )
         except Exception as e:
-            print("Error in slide", slide_name, "error is:", e)
-            with lock:
-                with open(os.path.join(self.config["output_path"], "error_log.txt"), "a") as f:
-                    f.write(
-                        "Error: " + str(e) + "  in:  " + slide_name + " function: get_relevant_tiles")
+            self.print_and_log_slide_error(slide_name, e, "get_relevant_tiles")
             return 0
 
         # Calibrated or non calibrated patch sizes
@@ -750,11 +743,7 @@ class WSIHandler:
                     output_format=self.config["output_format"],
                 )
             except Exception as e:
-                print("Error in slide", slide_name, "error is:", e)
-                with lock:
-                    with open(os.path.join(self.config["output_path"], "error_log.txt"), "a") as f:
-                        f.write(
-                            "Error: " + str(e) + "  in:  " + slide_name + " function: extract_calibrated_patches")
+                self.print_and_log_slide_error(slide_name, e, "extract_calibrated_patches")
                 return 0
         else:
             try:
@@ -770,11 +759,7 @@ class WSIHandler:
                     output_format=self.config["output_format"],
                 )
             except Exception as e:
-                print("Error in slide", slide_name, "error is:", e)
-                with lock:
-                    with open(os.path.join(self.config["output_path"], "error_log.txt"), "a") as f:
-                        f.write(
-                            "Error: " + str(e) + "  in:  " + slide_name + " function: extract_patches")
+                self.print_and_log_slide_error(slide_name, e, "extract_patches")
                 return 0
 
         self.export_dict(patch_dict, self.config["metadata_format"], "tile_information")
@@ -784,10 +769,7 @@ class WSIHandler:
             print("Finished slide ", slide_name)
 
         except Exception as e:
-            print("Error in slide", slide_name, "error is:", e)
-            with lock:
-                with open(os.path.join(self.config["output_path"], "error_log.txt"), "a") as f:
-                    f.write("Error: " + str(e) + "  in:  " + slide_name + " function: save_thumbnail")
+            self.print_and_log_slide_error(slide_name, e, "save_thumbnail")
             return 0
 
     def read_slide_file(self, slide_file_path, ext_list):
