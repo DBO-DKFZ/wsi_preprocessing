@@ -276,52 +276,62 @@ class WSIHandler:
 
         return relevant_tiles_dict
 
+    def tissue_percentage_over_threshold(self, label, label_dict, percentage):
+        if label_dict[label]["type"] == "==":
+            if label_dict[label]["threshold"] == percentage:
+                return label, percentage
+        elif label_dict[label]["type"] == ">=":
+            if percentage >= label_dict[label]["threshold"]:
+                return label, percentage
+        elif label_dict[label]["type"] == ">":
+            if percentage > label_dict[label]["threshold"]:
+                return label, percentage
+        elif label_dict[label]["type"] == "<=":
+            if percentage <= percentage[label]["threshold"]:
+                return label, percentage
+        elif label_dict[label]["type"] == "<":
+            if percentage < label_dict[label]["threshold"]:
+                return label, percentage
+
+        return None, None
+
+    def get_unique_nonzero_entries(self, ndarray):
+        return np.unique(ndarray[np.nonzero(ndarray)]).astype(int)
+
+    def get_label_with_highest_tissue_percentage(self, annotation_mask, label_dict):
+        potential_labels = self.get_unique_nonzero_entries(annotation_mask)
+        labels_over_percentage_threshold = []
+        for label_id in potential_labels:
+            percentage = np.count_nonzero(annotation_mask == label_id) / annotation_mask.size
+            _, percentage = self.tissue_percentage_over_threshold(list(label_dict)[label_id], label_dict, percentage)
+            if percentage is not None:
+                labels_over_percentage_threshold.append((label_id, percentage))
+
+        if len(labels_over_percentage_threshold) == 0:
+            # return the first entry, wlog, as no annotated region is large enough to pass the threshold
+            return potential_labels[0]
+        elif len(labels_over_percentage_threshold) == 1:
+            return labels_over_percentage_threshold[0][0]
+        else:
+            current_max = (-1, 0)
+            for (label, percentage) in labels_over_percentage_threshold:
+                if percentage > current_max[1]:
+                    current_max = (label, percentage)
+            return current_max[0]
+
     def check_for_label(self, label_dict, annotation_mask):
-
-        label_percentage = np.count_nonzero(annotation_mask) / annotation_mask.size  # todo adapt to multi-annotation patches
-
-        if np.unique(annotation_mask[np.nonzero(annotation_mask)]).size == 1:
-            label_id = int(np.unique(annotation_mask[np.nonzero(annotation_mask)])[0])  # todo add handling for tiles with several non-zero annotations
-        elif np.unique(annotation_mask[np.nonzero(annotation_mask)]).size > 1:
-            label_id = int(np.unique(annotation_mask[np.nonzero(annotation_mask)])[0])  # todo this is technically wrong, but a simplification for implementation purposes
+        if self.get_unique_nonzero_entries(annotation_mask).size == 1:
+            label_id = self.get_unique_nonzero_entries(annotation_mask)[0]
+        elif self.get_unique_nonzero_entries(annotation_mask).size > 1:
+            label_id = self.get_label_with_highest_tissue_percentage(annotation_mask, label_dict)
         else:
             label_id = 0
 
+        label_percentage = np.count_nonzero(annotation_mask == label_id) / annotation_mask.size
+
         label = list(label_dict)[label_id]  # todo add check that first entry in config for label_dict is non_tumor
 
-        if label_dict[label]["type"] == "==":
-            if label_dict[label]["threshold"] == label_percentage:
-                return label, label_percentage
-        elif label_dict[label]["type"] == ">=":
-            if label_percentage >= label_dict[label]["threshold"]:
-                return label, label_percentage
-        elif label_dict[label]["type"] == ">":
-            if label_percentage > label_dict[label]["threshold"]:
-                return label, label_percentage
-        elif label_dict[label]["type"] == "<=":
-            if label_percentage <= label_percentage[label]["threshold"]:
-                return label, label_percentage
-        elif label_dict[label]["type"] == "<":
-            if label_percentage < label_dict[label]["threshold"]:
-                return label, label_percentage
-        # for label in label_dict:
-        #     if label_dict[label]["type"] == "==":
-        #         if label_dict[label]["threshold"] == label_percentage:
-        #             return label, label_percentage
-        #     elif label_dict[label]["type"] == ">=":
-        #         if label_percentage >= label_dict[label]["threshold"]:
-        #             return label, label_percentage
-        #     elif label_dict[label]["type"] == ">":
-        #         if label_percentage > label_dict[label]["threshold"]:
-        #             return label, label_percentage
-        #     elif label_dict[label]["type"] == "<=":
-        #         if label_percentage <= label_percentage[label]["threshold"]:
-        #             return label, label_percentage
-        #     elif label_dict[label]["type"] == "<":
-        #         if label_percentage < label_dict[label]["threshold"]:
-        #             return label, label_percentage
-
-        return None, None
+        return self.tissue_percentage_over_threshold(label, label_dict, label_percentage)
 
     def make_dirs(self, output_path, slide_name, label_dict, annotated):
         try:
