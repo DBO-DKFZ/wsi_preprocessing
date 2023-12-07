@@ -2,6 +2,7 @@
 import json
 import multiprocessing
 import os
+import warnings
 
 # Advanced
 import xml.etree.ElementTree as ET
@@ -53,7 +54,8 @@ class WSIHandler:
         self.res_y = None
 
     def print_and_log_slide_error(self, slide_name, e, method_name):
-        print(f"Error in slide {slide_name}. The error is: {type(e).__name__}: {e} in method: {method_name}.")  # todo show martin format string
+        raise e
+        print(f"Error in slide {slide_name}. The error is: {type(e).__name__}: {e} in method: {method_name}.")
         with lock:
             with open(os.path.join(self.config["output_path"], "error_log.txt"), "a") as f:
                 f.write(f"Error in slide {slide_name}. The error is: {type(e).__name__}: {e} in method: {method_name}.")
@@ -104,9 +106,19 @@ class WSIHandler:
             with open(annotation_path) as annotation_file:
                 annotations = json.load(annotation_file)
             # Only working for features of the type polygon
-            for polygon_nb in range(len(annotations["features"])):
-                annotation_dict.update({polygon_nb: annotations["features"][polygon_nb]["geometry"]["coordinates"][0]})
 
+            # for polygon_nb in range(len(annotations["features"])):
+            #     annotation_dict.update({polygon_nb: annotations["features"][polygon_nb]["geometry"]["coordinates"][0]}) todo remove
+            for polygon_nb in range(len(annotations["features"])):
+                if annotations["features"][polygon_nb]["geometry"]["type"] == "Polygon":
+                    annotation_dict.update({polygon_nb: {
+                        "coordinates": annotations["features"][polygon_nb]["geometry"]["coordinates"][0],
+                        "tissue_type": annotations["features"][polygon_nb]["properties"]["classification"]["name"]}}) # todo add handling of additional info
+                else:
+                    warnings.warn(f'Not implemented warning in file {annotation_file.name}: The handling of the QuPath '
+                                  f'annotation type {annotations["features"][polygon_nb]["geometry"]["type"]} '
+                                  f'(id:{annotations["features"][polygon_nb]["id"]}) has not been implemented, yet. '
+                                  f'Skipping.')
         # xml for CAMELYON17
         elif file_format == ".xml":
             tree = ET.parse(annotation_path)
@@ -118,12 +130,12 @@ class WSIHandler:
                     items = subelem.attrib
                     if "Type" in items.keys():
                         if items["Type"] == "Polygon":
-                            annotation_dict.update({polygon_nb: None})
                             polygon_list = []
                             for coordinates in subelem:
                                 for coord in coordinates:
                                     polygon_list.append([float(coord.attrib["X"]), float(coord.attrib["Y"])])
-                            annotation_dict[polygon_nb] = polygon_list
+                            # all annotationy in CAMELYON17 are tumor, so this is a pseudo label
+                            annotation_dict.update({polygon_nb: {"coordinates": polygon_list, "tissue_type": "Tumor"}})
                             polygon_nb += 1
         else:
             return None
@@ -193,7 +205,7 @@ class WSIHandler:
             annotation_mask = np.zeros(shape=(tissue_mask.shape[0], tissue_mask.shape[1]))
             scaling_factor = self.slide.level_downsamples[level]
             scaled_list = [
-                [[point[0] / scaling_factor, point[1] / scaling_factor] for point in self.annotation_dict[polygon]]
+                [[point[0] / scaling_factor, point[1] / scaling_factor] for point in self.annotation_dict[polygon]["coordinates"]]
                 for polygon in self.annotation_dict
             ]
 
@@ -266,24 +278,48 @@ class WSIHandler:
 
     def check_for_label(self, label_dict, annotation_mask):
 
-        label_percentage = np.count_nonzero(annotation_mask) / annotation_mask.size
+        label_percentage = np.count_nonzero(annotation_mask) / annotation_mask.size  # todo adapt to multi-annotation patches
 
-        for label in label_dict:
-            if label_dict[label]["type"] == "==":
-                if label_dict[label]["threshold"] == label_percentage:
-                    return label, label_percentage
-            elif label_dict[label]["type"] == ">=":
-                if label_percentage >= label_dict[label]["threshold"]:
-                    return label, label_percentage
-            elif label_dict[label]["type"] == ">":
-                if label_percentage > label_dict[label]["threshold"]:
-                    return label, label_percentage
-            elif label_dict[label]["type"] == "<=":
-                if label_percentage <= label_percentage[label]["threshold"]:
-                    return label, label_percentage
-            elif label_dict[label]["type"] == "<":
-                if label_percentage < label_dict[label]["threshold"]:
-                    return label, label_percentage
+        if np.unique(annotation_mask[np.nonzero(annotation_mask)]).size == 1:
+            label_id = int(np.unique(annotation_mask[np.nonzero(annotation_mask)])[0])  # todo add handling for tiles with several non-zero annotations
+        elif np.unique(annotation_mask[np.nonzero(annotation_mask)]).size > 1:
+            label_id = int(np.unique(annotation_mask[np.nonzero(annotation_mask)])[0])  # todo this is technically wrong, but a simplification for implementation purposes
+        else:
+            label_id = 0
+
+        label = list(label_dict)[label_id]  # todo add check that first entry in config for label_dict is non_tumor
+
+        if label_dict[label]["type"] == "==":
+            if label_dict[label]["threshold"] == label_percentage:
+                return label, label_percentage
+        elif label_dict[label]["type"] == ">=":
+            if label_percentage >= label_dict[label]["threshold"]:
+                return label, label_percentage
+        elif label_dict[label]["type"] == ">":
+            if label_percentage > label_dict[label]["threshold"]:
+                return label, label_percentage
+        elif label_dict[label]["type"] == "<=":
+            if label_percentage <= label_percentage[label]["threshold"]:
+                return label, label_percentage
+        elif label_dict[label]["type"] == "<":
+            if label_percentage < label_dict[label]["threshold"]:
+                return label, label_percentage
+        # for label in label_dict:
+        #     if label_dict[label]["type"] == "==":
+        #         if label_dict[label]["threshold"] == label_percentage:
+        #             return label, label_percentage
+        #     elif label_dict[label]["type"] == ">=":
+        #         if label_percentage >= label_dict[label]["threshold"]:
+        #             return label, label_percentage
+        #     elif label_dict[label]["type"] == ">":
+        #         if label_percentage > label_dict[label]["threshold"]:
+        #             return label, label_percentage
+        #     elif label_dict[label]["type"] == "<=":
+        #         if label_percentage <= label_percentage[label]["threshold"]:
+        #             return label, label_percentage
+        #     elif label_dict[label]["type"] == "<":
+        #         if label_percentage < label_dict[label]["threshold"]:
+        #             return label, label_percentage
 
         return None, None
 
@@ -306,10 +342,6 @@ class WSIHandler:
 
         except Exception as e:
             self.print_and_log_slide_error(slide_name, e, "make_dirs")
-            # print("Error in slide", slide_name, "error is:", e)  todo show martin
-            # with lock:
-            #     with open(os.path.join(self.config["output_path"], "error_log.txt"), "a") as f:
-            #         f.write("Error: " + str(e) + "  in:  " + slide_name + " function: make_dirs")
 
     def extract_calibrated_patches(
         self,
@@ -354,15 +386,23 @@ class WSIHandler:
             if annotations is not None:
                 # Translate from world coordinates to tile coordinates
                 tile_annotation_list = [
-                    [[point[0] - tile_x, point[1] - tile_y] for point in annotations[polygon]]
+                    [[point[0] - tile_x, point[1] - tile_y] for point in annotations[polygon]["coordinates"]]
                     for polygon in annotations
                 ]
+                tile_annotation_list = list(zip(tile_annotation_list, [annotations[polygon]["tissue_type"] for polygon in annotations]))
 
                 # Create mask from polygons
                 tile_annotation_mask = np.zeros(shape=(tile_size_px, tile_size_px))
 
+                annotated_tissue_types = {}
+                tissue_type_number = 1
+                for key, value in label_dict.items():
+                    if value["annotated"]:
+                        annotated_tissue_types.update({key: tissue_type_number})
+                        tissue_type_number += 1
+
                 for polygon in tile_annotation_list:
-                    cv2.fillPoly(tile_annotation_mask, [np.array(polygon).astype(np.int32)], 1)
+                    cv2.fillPoly(tile_annotation_mask, [np.array(polygon[0]).astype(np.int32)], annotated_tissue_types[polygon[1]]) # todo fill with color corresponding to label number - cont here
 
             stop_y = False
 
@@ -393,6 +433,7 @@ class WSIHandler:
 
                     # check if the patch is annotated
                     annotated = False
+
                     if annotations is not None:
                         patch_mask = tile_annotation_mask[
                             patch_y : patch_y + patch_size_px_y, patch_x : patch_x + patch_size_px_x
@@ -406,6 +447,8 @@ class WSIHandler:
                         label = "unlabeled"
 
                     if label is not None:
+                        if label != "non_tumor" and label != "Tumor":
+                            pass
                         if self.annotated_only and annotated or not self.annotated_only:
 
                             file_name = slide_name + "_" + str(global_x) + "_" + str(global_y) + "." + output_format
@@ -484,7 +527,7 @@ class WSIHandler:
                 if annotations is not None:
                     # Translate from world coordinates to tile coordinates
                     tile_annotation_list = [
-                        [[point[0] - tile_x, point[1] - tile_y] for point in annotations[polygon]]
+                        [[point[0] - tile_x, point[1] - tile_y] for point in annotations[polygon]["coordinates"]]
                         for polygon in annotations
                     ]
 
@@ -529,7 +572,7 @@ class WSIHandler:
                             ]
                             label, label_percentage = self.check_for_label(label_dict, patch_mask)
                             if label is not None:
-                                if self.config["label_dict"][label]["annotated"]:
+                                if self.config["label_dict"][label]["annotated"]: # todo change/check label handling here, too
                                     annotated = True
 
                         else:
@@ -681,10 +724,6 @@ class WSIHandler:
 
         except Exception as e:
             self.print_and_log_slide_error(slide_name, e, "process_slide - load_annotations")
-            # print("Error in slide", slide_name, "error is:", e) todo show martin
-            # with lock:
-            #     with open(os.path.join(self.config["output_path"], "error_log.txt"), "a") as f:
-            #         f.write("Error: " + str(e) + "  in:  " + slide_name + " function: process_slide - load_annotations")
             return 0
 
         self.make_dirs(
@@ -698,7 +737,7 @@ class WSIHandler:
         try:
             level = self.load_slide(slide_path)
         except Exception as e:
-            self.print_and_log_slide_error(slide_name, e, "load_slide")  # todo technically, this can be moved into the method itself as well
+            self.print_and_log_slide_error(slide_name, e, "load_slide")
             return 0
 
         if self.config["calibration"]["use_non_pixel_lengths"]:
@@ -870,7 +909,8 @@ class WSIHandler:
             else:
                 # Save label proportion per slide
                 labels = list(self.config["label_dict"].keys())
-                if len(labels) == 2:
+
+                if len(labels) == 2:# todo test
 
                     for i in range(len(annotated_slides)):
                         slide = slide_list[i]
@@ -896,8 +936,32 @@ class WSIHandler:
                     self.output_path = self.config["output_path"]
                     self.export_dict(slide_dict, self.config["metadata_format"], "slide_information")
                 else:
-                    print("Can only write slide information for binary classification problem")
+                    for i in range(len(annotated_slides)):
+                        slide = slide_list[i]
+                        slide_name = os.path.basename(slide)
+                        slide_name = os.path.splitext(slide_name)[0]
+                        slide_path = os.path.join(self.config["output_path"], slide_name)
 
+                        n_labeled_tiles = 0
+                        n_labels = {}
+                        for label in labels:
+                            n_label = len(os.listdir(os.path.join(slide_path, label)))
+                            n_labels.update({label: n_label})
+                            n_labeled_tiles += n_label
+
+                        slide_dict_entry = {}
+                        slide_dict_entry.update({"slide_name": slide_name})
+                        fracs = {}
+                        for label, n_label in n_labels.items():
+                            slide_dict_entry.update({label: n_label})
+                            fracs.update({label: n_label / n_labeled_tiles * 100})
+                        slide_dict_entry.update({"total": n_labeled_tiles, "frac": fracs})
+                        slide_dict.update({i: slide_dict_entry})
+
+                    self.output_path = self.config["output_path"]
+                    self.export_dict(slide_dict, self.config["metadata_format"], "slide_information")
+                    #print("Can only write slide information for binary classification problem") # todo modify to handle several types of annotations
+# todo implement sanity checks (dict labels matching labels on annotations), print outs which labels have (not) been annotation-processed, etc, make sure to catch/handle multipolygons
             # Save used config file
             file = os.path.join(self.config["output_path"], "config.json")
             with open(file, "w") as json_file:

@@ -9,7 +9,7 @@
   "calibration": {"use_non_pixel_lengths": true, "patch_size_microns": 64, "resize": true},
   "slides_file": "/home/katja/Data/svs-WSIs/slides_file.txt",
   "slides_dir": "/home/katja/Data/svs-WSIs/",
-  "annotation_dir": "/home/katja/Data/svs-WSIs/annotations",
+  "annotation_dir": "/home/katja/Data/svs-WSIs/test_project",
   "annotation_file_format": "geojson",
   "output_path": "/home/katja/Data/svs-WSIs/tiles/",
   "skip_unlabeled_slides": false,
@@ -19,6 +19,8 @@
   "show_mode": false,
   "label_dict": {
     "non_tumor": {"type": "==", "threshold": 0, "annotated": false},
-    "tumor": {"type": ">=", "threshold": 0.5, "annotated": true}
+    "Tumor": {"type": ">=", "threshold": 0.5, "annotated": true},
+    "Necrosis": {"type": ">=", "threshold": 0.5, "annotated": true},
+    "Stroma": {"type": ">=", "threshold": 0.5, "annotated": true}
   }
 }
