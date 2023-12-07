@@ -53,14 +53,16 @@ class WSIHandler:
         self.res_x = None
         self.res_y = None
 
-    def print_and_log_slide_error(self, slide_name, e, method_name):
-        raise e
-        print(f"Error in slide {slide_name}. The error is: {type(e).__name__}: {e} in method: {method_name}.")
+    def print_and_log_slide_error(self, slide_name, error_msg, method_name):
+        print(f"Error in slide {slide_name}. The error is: {type(error_msg).__name__}: {error_msg} in method: "
+              f"{method_name}.")
         with lock:
             with open(os.path.join(self.config["output_path"], "error_log.txt"), "a") as f:
-                f.write(f"Error in slide {slide_name}. The error is: {type(e).__name__}: {e} in method: {method_name}.")
+                f.write(f"Error in slide {slide_name}. The error is: {type(error_msg).__name__}: {error_msg} in "
+                        f"method: {method_name}.")
 
-    def load_config(self, config_path):
+    @staticmethod
+    def load_config(config_path):
         assert os.path.exists(config_path), "Cannot find " + config_path
         with open(config_path) as json_file:
             config = json.load(json_file)
@@ -97,7 +99,8 @@ class WSIHandler:
 
         return processing_level
 
-    def load_annotation(self, annotation_path):
+    @staticmethod
+    def load_annotation(annotation_path):
         annotation_dict = {}
         file_format = Path(annotation_path).suffix
 
@@ -105,15 +108,12 @@ class WSIHandler:
         if file_format == ".geojson" or file_format == ".txt":
             with open(annotation_path) as annotation_file:
                 annotations = json.load(annotation_file)
-            # Only working for features of the type polygon
 
-            # for polygon_nb in range(len(annotations["features"])):
-            #     annotation_dict.update({polygon_nb: annotations["features"][polygon_nb]["geometry"]["coordinates"][0]}) todo remove
             for polygon_nb in range(len(annotations["features"])):
                 if annotations["features"][polygon_nb]["geometry"]["type"] == "Polygon":
                     annotation_dict.update({polygon_nb: {
                         "coordinates": annotations["features"][polygon_nb]["geometry"]["coordinates"][0],
-                        "tissue_type": annotations["features"][polygon_nb]["properties"]["classification"]["name"]}}) # todo add handling of additional info
+                        "tissue_type": annotations["features"][polygon_nb]["properties"]["classification"]["name"]}})
                 else:
                     warnings.warn(f'Not implemented warning in file {annotation_file.name}: The handling of the QuPath '
                                   f'annotation type {annotations["features"][polygon_nb]["geometry"]["type"]} '
@@ -276,7 +276,8 @@ class WSIHandler:
 
         return relevant_tiles_dict
 
-    def tissue_percentage_over_threshold(self, label, label_dict, percentage):
+    @staticmethod
+    def tissue_percentage_over_threshold(label, label_dict, percentage):
         if label_dict[label]["type"] == "==":
             if label_dict[label]["threshold"] == percentage:
                 return label, percentage
@@ -295,7 +296,8 @@ class WSIHandler:
 
         return None, None
 
-    def get_unique_nonzero_entries(self, ndarray):
+    @staticmethod
+    def get_unique_nonzero_entries(ndarray):
         return np.unique(ndarray[np.nonzero(ndarray)]).astype(int)
 
     def get_label_with_highest_tissue_percentage(self, annotation_mask, label_dict):
@@ -412,7 +414,8 @@ class WSIHandler:
                         tissue_type_number += 1
 
                 for polygon in tile_annotation_list:
-                    cv2.fillPoly(tile_annotation_mask, [np.array(polygon[0]).astype(np.int32)], annotated_tissue_types[polygon[1]]) # todo fill with color corresponding to label number - cont here
+                    cv2.fillPoly(tile_annotation_mask, [np.array(polygon[0]).astype(np.int32)],
+                                 annotated_tissue_types[polygon[1]])
 
             stop_y = False
 
@@ -502,8 +505,7 @@ class WSIHandler:
         slide_name=None,
         output_format="png",
     ):
-        # TODO: Only working with binary labels right now
-        px_overlap = int(patch_size * overlap)
+        px_overlap = int(patch_size * overlap)  # todo check if can be removed
         patch_dict = {}
 
         scaling_factor = int(self.slide.level_downsamples[level])
@@ -821,7 +823,8 @@ class WSIHandler:
             self.print_and_log_slide_error(slide_name, e, "save_thumbnail")
             return 0
 
-    def read_slide_file(self, slide_file_path, ext_list):
+    @staticmethod
+    def read_slide_file(slide_file_path, ext_list):
 
         slide_list = []
 
@@ -840,7 +843,8 @@ class WSIHandler:
 
         return slide_list
 
-    def init(self, l):
+    @staticmethod
+    def init(l):
         global lock
         lock = l
 
@@ -970,7 +974,7 @@ class WSIHandler:
 
                     self.output_path = self.config["output_path"]
                     self.export_dict(slide_dict, self.config["metadata_format"], "slide_information")
-                    #print("Can only write slide information for binary classification problem") # todo modify to handle several types of annotations
+
 # todo implement sanity checks (dict labels matching labels on annotations), print outs which labels have (not) been annotation-processed, etc, make sure to catch/handle multipolygons
             # Save used config file
             file = os.path.join(self.config["output_path"], "config.json")
