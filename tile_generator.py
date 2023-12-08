@@ -353,7 +353,10 @@ class WSIHandler:
         else:
             label_id = 0
 
-        label_percentage = np.count_nonzero(annotation_mask == label_id) / annotation_mask.size
+        if label_id != 0:
+            label_percentage = np.count_nonzero(annotation_mask == label_id) / annotation_mask.size
+        else:
+            label_percentage = 1.0 - np.count_nonzero(annotation_mask == label_id) / annotation_mask.size
 
         label = list(label_dict)[label_id]
 
@@ -362,19 +365,21 @@ class WSIHandler:
     def make_dirs(self, output_path, slide_name, label_dict, annotated):
         try:
             slide_path = os.path.join(output_path, slide_name)
+            if not os.path.exists(slide_path):
+                os.makedirs(slide_path)
             if not annotated:
                 unlabeled_path = os.path.join(slide_path, "unlabeled")
                 if not os.path.exists(unlabeled_path):
                     os.makedirs(unlabeled_path)
             else:
-                if not os.path.exists(slide_path):
-                    os.makedirs(slide_path)
                 for label in label_dict:
                     sub_path = os.path.join(slide_path, label)
                     if not os.path.exists(sub_path):
                         os.makedirs(sub_path)
-
-            self.output_path = slide_path
+                    if os.listdir(sub_path) and self.config["discard_preexistent_patches"]:
+                        for patch in os.listdir(sub_path):
+                            os.remove(os.path.join(sub_path, patch))
+            self.output_path = slide_path  # todo fix overlapping labels
 
         except Exception as e:
             self.print_and_log_slide_error(slide_name, e, "make_dirs")
@@ -484,8 +489,6 @@ class WSIHandler:
                         label = "unlabeled"
 
                     if label is not None:
-                        if label != "non_tumor" and label != "Tumor":
-                            pass
                         if self.annotated_only and annotated or not self.annotated_only:
 
                             file_name = slide_name + "_" + str(global_x) + "_" + str(global_y) + "." + output_format
