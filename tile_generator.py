@@ -53,6 +53,26 @@ class WSIHandler:
         self.res_x = None
         self.res_y = None
 
+        self.validate_label_dict()
+
+    def validate_label_dict(self):
+        self.check_at_most_one_unannotated_label()
+        self.check_unannotated_label_first()
+
+    def check_at_most_one_unannotated_label(self):
+        label_dict = self.config["label_dict"]
+        unannotated_labels = []
+        for label, label_config in label_dict.items():
+            if not label_config["annotated"]:
+                unannotated_labels.append(label)
+        assert len(unannotated_labels) < 2, (f"More than one label (=tissue type) is marked as unannotated in the "
+                                             f"config.label_dict. Please make sure that at most one type (usually "
+                                             f"non-tumor) is marked as unannotated. The labels in question are "
+                                             f"{unannotated_labels}.")
+
+    def check_unannotated_label_first(self):
+        pass
+
     def print_and_log_slide_error(self, slide_name, error_msg, method_name):
         print(f"Error in slide {slide_name}. The error is: {type(error_msg).__name__}: {error_msg} in method: "
               f"{method_name}.")
@@ -584,7 +604,7 @@ class WSIHandler:
                             ]
                             label, label_percentage = self.check_for_label(label_dict, patch_mask)
                             if label is not None:
-                                if self.config["label_dict"][label]["annotated"]: # todo change/check label handling here, too
+                                if self.config["label_dict"][label]["annotated"]:
                                     annotated = True
 
                         else:
@@ -975,7 +995,7 @@ class WSIHandler:
                     self.output_path = self.config["output_path"]
                     self.export_dict(slide_dict, self.config["metadata_format"], "slide_information")
 
-# todo implement sanity checks (dict labels matching labels on annotations), print outs which labels have (not) been annotation-processed, etc, make sure to catch/handle multipolygons
+# todo implement sanity checks (dict labels matching labels on annotations), print outs which labels have (not) been annotation-processed, etc
             # Save used config file
             file = os.path.join(self.config["output_path"], "config.json")
             with open(file, "w") as json_file:
@@ -996,3 +1016,5 @@ if __name__ == "__main__":
 
     slide_handler = WSIHandler(config_path=args.config_path)
     slide_handler.slides2patches()
+
+# todo work through other todo notes, especially do the checking (needs to prepare file accordingly), need to be able to handle overlapping annotations (i.e. warn about it), and continue to refactor as necessary - cont here
