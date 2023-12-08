@@ -229,7 +229,8 @@ class WSIHandler:
             annotation_mask = np.zeros(shape=(tissue_mask.shape[0], tissue_mask.shape[1]))
             scaling_factor = self.slide.level_downsamples[level]
             scaled_list = [
-                [[point[0] / scaling_factor, point[1] / scaling_factor] for point in self.annotation_dict[polygon]["coordinates"]]
+                [[point[0] / scaling_factor, point[1] / scaling_factor]
+                 for point in self.annotation_dict[polygon]["coordinates"]]
                 for polygon in self.annotation_dict
             ]
 
@@ -244,7 +245,7 @@ class WSIHandler:
             for col in range(cols):
 
                 tile = tissue_mask[
-                    row * tile_size : row * tile_size + tile_size, col * tile_size : col * tile_size + tile_size
+                    row * tile_size: row * tile_size + tile_size, col * tile_size: col * tile_size + tile_size
                 ]
                 tissue_coverage = np.count_nonzero(tile) / tile.size
                 annotated = False
@@ -253,8 +254,8 @@ class WSIHandler:
                     if (
                         np.count_nonzero(
                             annotation_mask[
-                                row * tile_size : row * tile_size + tile_size,
-                                col * tile_size : col * tile_size + tile_size,
+                                row * tile_size: row * tile_size + tile_size,
+                                col * tile_size: col * tile_size + tile_size,
                             ]
                         )
                         > 0
@@ -430,7 +431,8 @@ class WSIHandler:
                     [[point[0] - tile_x, point[1] - tile_y] for point in annotations[polygon]["coordinates"]]
                     for polygon in annotations
                 ]
-                tile_annotation_list = list(zip(tile_annotation_list, [annotations[polygon]["tissue_type"] for polygon in annotations]))
+                tile_annotation_list = list(zip(tile_annotation_list, [annotations[polygon]["tissue_type"]
+                                                                       for polygon in annotations]))
 
                 # Create mask from polygons
                 tile_annotation_mask = np.zeros(shape=(tile_size_px, tile_size_px))
@@ -468,7 +470,7 @@ class WSIHandler:
                     global_x = patch_x + tile_x
                     global_y = patch_y + tile_y
 
-                    patch = tile[patch_y : patch_y + patch_size_px_y, patch_x : patch_x + patch_size_px_x, :]
+                    patch = tile[patch_y: patch_y + patch_size_px_y, patch_x: patch_x + patch_size_px_x, :]
 
                     if np.sum(patch) == 0:
                         break
@@ -478,7 +480,7 @@ class WSIHandler:
 
                     if annotations is not None:
                         patch_mask = tile_annotation_mask[
-                            patch_y : patch_y + patch_size_px_y, patch_x : patch_x + patch_size_px_x
+                            patch_y: patch_y + patch_size_px_y, patch_x : patch_x + patch_size_px_x
                         ]
                         label, _ = self.check_for_label(label_dict, patch_mask)
                         if label is not None:
@@ -554,13 +556,13 @@ class WSIHandler:
                 # overlap separately  for annotated and unannotated patches
                 if tile_dict[tile_key]["annotated"]:
                     px_overlap = int(patch_size * annotation_overlap)
-                    rows = int(np.ceil((tile_size) / (patch_size - px_overlap)))
-                    cols = int(np.ceil((tile_size) / (patch_size - px_overlap)))
+                    rows = int(np.ceil(tile_size / (patch_size - px_overlap)))
+                    cols = int(np.ceil(tile_size / (patch_size - px_overlap)))
 
                 else:
                     px_overlap = int(patch_size * overlap)
-                    rows = int(np.ceil((tile_size) / (patch_size - px_overlap)))
-                    cols = int(np.ceil((tile_size) / (patch_size - px_overlap)))
+                    rows = int(np.ceil(tile_size / (patch_size - px_overlap)))
+                    cols = int(np.ceil(tile_size / (patch_size - px_overlap)))
 
                 # create annotation mask
                 if annotations is not None:
@@ -598,7 +600,7 @@ class WSIHandler:
                         global_x = patch_x + tile_x
                         global_y = patch_y + tile_y
 
-                        patch = tile[patch_y : patch_y + patch_size, patch_x : patch_x + patch_size, :]
+                        patch = tile[patch_y: patch_y + patch_size, patch_x: patch_x + patch_size, :]
 
                         if np.sum(patch) == 0:
                             break
@@ -607,7 +609,7 @@ class WSIHandler:
                         annotated = False
                         if annotations is not None:
                             patch_mask = tile_annotation_mask[
-                                patch_y : patch_y + patch_size, patch_x : patch_x + patch_size
+                                patch_y: patch_y + patch_size, patch_x: patch_x + patch_size
                             ]
                             label, label_percentage = self.check_for_label(label_dict, patch_mask)
                             if label is not None:
@@ -653,14 +655,14 @@ class WSIHandler:
 
         return patch_dict
 
-    def export_dict(self, dict, metadata_format, filename):
+    def export_dict(self, dictionary, metadata_format, filename):
 
         if metadata_format == "json":
             file = os.path.join(self.output_path, filename + ".json")
             with open(file, "w") as json_file:
-                json.dump(dict, json_file, indent=4)
+                json.dump(dictionary, json_file, indent=4)
         elif metadata_format == "csv":
-            df = pd.DataFrame(dict.values())
+            df = pd.DataFrame(dictionary.values())
             file = os.path.join(self.output_path, filename + ".csv")
             df.to_csv(file, index=False)
         else:
