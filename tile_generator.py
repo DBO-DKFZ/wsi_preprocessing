@@ -71,7 +71,11 @@ class WSIHandler:
                                              f"{unannotated_labels}.")
 
     def check_unannotated_label_first(self):
-        pass
+        label_dict = self.config["label_dict"]
+        for label in list(label_dict)[1:]:
+            assert label_dict[label]["annotated"], (f"WSIHandler requires the unannotated label to be located in the "
+                                                    f"first position in config.label_dict. Please move the unannotated "
+                                                    f"tissue type '{label}' to the first position.")
 
     def print_and_log_slide_error(self, slide_name, error_msg, method_name):
         print(f"Error in slide {slide_name}. The error is: {type(error_msg).__name__}: {error_msg} in method: "
@@ -351,7 +355,7 @@ class WSIHandler:
 
         label_percentage = np.count_nonzero(annotation_mask == label_id) / annotation_mask.size
 
-        label = list(label_dict)[label_id]  # todo add check that first entry in config for label_dict is non_tumor
+        label = list(label_dict)[label_id]
 
         return self.tissue_percentage_over_threshold(label, label_dict, label_percentage)
 
