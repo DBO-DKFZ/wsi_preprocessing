@@ -322,6 +322,25 @@ class WSIHandler:
         return None, None
 
     @staticmethod
+    def check_tissue_percentage_over_threshold(label, label_dict, percentage):
+        if label_dict[label]["type"] == "==":
+            if label_dict[label]["threshold"] == percentage:
+                return True
+        elif label_dict[label]["type"] == ">=":
+            if percentage >= label_dict[label]["threshold"]:
+                return True
+        elif label_dict[label]["type"] == ">":
+            if percentage > label_dict[label]["threshold"]:
+                return True
+        elif label_dict[label]["type"] == "<=":
+            if percentage <= percentage[label]["threshold"]:
+                return True
+        elif label_dict[label]["type"] == "<":
+            if percentage < label_dict[label]["threshold"]:
+                return True
+        return False
+
+    @staticmethod
     def get_unique_nonzero_entries(ndarray):
         return np.unique(ndarray[np.nonzero(ndarray)]).astype(int)
 
@@ -329,8 +348,11 @@ class WSIHandler:
         potential_labels = self.get_unique_nonzero_entries(annotation_mask)
         labels_over_percentage_threshold = []
         for label_id in potential_labels:
-            percentage = np.count_nonzero(annotation_mask == label_id) / annotation_mask.size
-            _, percentage = self.tissue_percentage_over_threshold(list(label_dict)[label_id], label_dict, percentage)
+            percentage = (np.count_nonzero(annotation_mask[:, :, label_id] == label_id) /
+                          annotation_mask[:, :, label_id].size)
+            # list(dict) returns the list of keys in insertion order which is used to create label_id, too
+            label = list(label_dict)[label_id]
+            _, percentage = self.tissue_percentage_over_threshold(label, label_dict, percentage)
             if percentage is not None:
                 labels_over_percentage_threshold.append((label_id, percentage))
 
@@ -340,28 +362,66 @@ class WSIHandler:
         elif len(labels_over_percentage_threshold) == 1:
             return labels_over_percentage_threshold[0][0]
         else:
-            current_max = (-1, 0)
+            current_max = (-1, 0)  # todo refactor to allow for more than one label passing the threshold cont here
             for (label, percentage) in labels_over_percentage_threshold:
                 if percentage > current_max[1]:
                     current_max = (label, percentage)
             return current_max[0]
 
-    def check_for_label(self, label_dict, annotation_mask):
+# todo check background removal still working (I don't think anything *broke* here, but I saw a number of white tiles - might be an "issue" with extract_calibrated_tiles, though)
+
+    def check_for_label(self, label_dict, annotation_mask):  # todo refactor later as this is "legacy" code from parts of the tiling I did not need to touch - most likely it can be replaced with get_labels_with_enough_tissue_annotated
         if self.get_unique_nonzero_entries(annotation_mask).size == 1:
             label_id = self.get_unique_nonzero_entries(annotation_mask)[0]
         elif self.get_unique_nonzero_entries(annotation_mask).size > 1:
             label_id = self.get_label_with_highest_tissue_percentage(annotation_mask, label_dict)
+            # todo get all labels over threshold
         else:
             label_id = 0
 
         if label_id != 0:
-            label_percentage = np.count_nonzero(annotation_mask == label_id) / annotation_mask.size
+            label_percentage = (np.count_nonzero(annotation_mask[:, :, label_id] == label_id) /
+                                annotation_mask[:, :, label_id].size)
         else:
-            label_percentage = 1.0 - np.count_nonzero(annotation_mask == label_id) / annotation_mask.size
+            label_percentage = (np.count_nonzero(np.max(annotation_mask, axis=(-1)) == 0) /
+                                annotation_mask[:, :, label_id].size)
 
         label = list(label_dict)[label_id]
 
         return self.tissue_percentage_over_threshold(label, label_dict, label_percentage)
+
+    def get_possible_labels(self, annotation_mask):
+        if self.get_unique_nonzero_entries(annotation_mask).size >= 1:
+            return self.get_unique_nonzero_entries(annotation_mask).tolist()
+        else:
+            return [0]  # completely unlabeled patch -> only non-tumor
+
+    @staticmethod
+    def is_non_tumor(label_ids):  # non-tumor tissue is unannotated tissue that's left after tissue detection
+        return label_ids[0] == 0
+
+    def calculate_label_percentages(self, label_ids, annotation_mask):
+        if self.is_non_tumor(label_ids):
+            label_percentages = [(np.count_nonzero(np.max(annotation_mask, axis=(-1)) == 0) /
+                                  annotation_mask[:, :, 0].size)]
+        else:
+            label_percentages = []
+            for label_id in label_ids:
+                label_percentages.append((np.count_nonzero(annotation_mask[:, :, label_id] == label_id) /
+                                          annotation_mask[:, :, label_id].size))
+        return label_percentages
+
+    def get_labels_with_enough_tissue_annotated(self, label_dict, annotation_mask):  # todo currently wip
+        label_ids = self.get_possible_labels(annotation_mask)
+        label_percentages = self.calculate_label_percentages(label_ids, annotation_mask)
+
+        labels_with_enough_tissue_including_non_tumor = []
+        for (label_id, label_percentage) in zip(label_ids, label_percentages):
+            label = list(label_dict)[label_id]
+            if self.check_tissue_percentage_over_threshold(label, label_dict, label_percentage):
+                labels_with_enough_tissue_including_non_tumor.append(label)
+
+        return labels_with_enough_tissue_including_non_tumor
 
     def make_dirs(self, output_path, slide_name, label_dict, annotated):
         try:
@@ -380,7 +440,7 @@ class WSIHandler:
                     if os.listdir(sub_path) and self.config["discard_preexistent_patches"]:
                         for patch in os.listdir(sub_path):
                             os.remove(os.path.join(sub_path, patch))
-            self.output_path = slide_path  # todo fix overlapping labels
+            self.output_path = slide_path  # todo handle overlapping labels here as well
 
         except Exception as e:
             self.print_and_log_slide_error(slide_name, e, "make_dirs")
@@ -431,11 +491,23 @@ class WSIHandler:
                     [[point[0] - tile_x, point[1] - tile_y] for point in annotations[polygon]["coordinates"]]
                     for polygon in annotations
                 ]
+
+                for polygon in tile_annotation_list: # todo refactor into own function later - because fillpoly only works when poly in completely contained in tile - if not no annotation - so implement check to see if any of the points is contained in poly
+                    for point in polygon:
+                        if point[0] < 0:
+                            point[0] = 0.0
+                        elif point[0] >= tile_size_px:
+                            point[0] = tile_size_px - 1.0
+                        if point[1] < 0:
+                            point[1] = 0.0
+                        elif point[1] >= tile_size_px:
+                            point[1] = tile_size_px - 1.0
+
                 tile_annotation_list = list(zip(tile_annotation_list, [annotations[polygon]["tissue_type"]
                                                                        for polygon in annotations]))
 
                 # Create mask from polygons
-                tile_annotation_mask = np.zeros(shape=(tile_size_px, tile_size_px))
+                tile_annotation_mask = np.zeros(shape=(tile_size_px, tile_size_px, len(self.config["label_dict"])))
 
                 annotated_tissue_types = {}
                 tissue_type_number = 1
@@ -445,8 +517,16 @@ class WSIHandler:
                         tissue_type_number += 1
 
                 for polygon in tile_annotation_list:
-                    cv2.fillPoly(tile_annotation_mask, [np.array(polygon[0]).astype(np.int32)],
-                                 annotated_tissue_types[polygon[1]])
+                    np.set_printoptions(threshold = np.inf) # todo remove later
+                    # note: the casting to a contiguous array is due to OpenCV requiring C-order (row major) for
+                    # implementation purposes, compare here the answer by vvolhejn here
+                    # https://stackoverflow.com/questions/23830618/python-opencv-typeerror-layout-of-the-output-array-incompatible-with-cvmat
+                    # basically: many (all?) copy operations in numpy do this, ascontiguousarray is one of the more
+                    # verbose ones
+                    tile_annotation_mask[:, :, annotated_tissue_types[polygon[1]]] = cv2.fillPoly(np.ascontiguousarray(tile_annotation_mask[:, :, annotated_tissue_types[polygon[1]]]),[np.array(polygon[0]).astype(np.int32)], annotated_tissue_types[polygon[1]])
+                    # todo cont here - basic idea: one dimension for each annotation with either 1 or num_tissue_type, so we can handle overlapping annotation types properly, unannotated patches need special handling, but that can be done later
+                    # todo if there is unannotated dim 0, then cast/copy all annotations to dim 0 (i.e. get a binary mask of (not) annotated. potentially 1 for unannotated, as that might serve to remove 1-percentage when handling unannotated slices elsewhere
+                    # todo next implement handling of un-annotated tiles/patches
 
             stop_y = False
 
@@ -479,18 +559,18 @@ class WSIHandler:
                     annotated = False
 
                     if annotations is not None:
-                        patch_mask = tile_annotation_mask[
-                            patch_y: patch_y + patch_size_px_y, patch_x : patch_x + patch_size_px_x
-                        ]
-                        label, _ = self.check_for_label(label_dict, patch_mask)
-                        if label is not None:
-                            if self.config["label_dict"][label]["annotated"]:
-                                annotated = True
+                        patch_mask = tile_annotation_mask[patch_y: patch_y + patch_size_px_y,
+                                     patch_x : patch_x + patch_size_px_x, :]
+                        labels = self.get_labels_with_enough_tissue_annotated(label_dict, patch_mask) # todo wip
+                        if labels is not None:
+                            for label in labels:
+                                if self.config["label_dict"][label]["annotated"]:  # this is done to ensure that non-tumor tissue (unannotated) is handled properly
+                                    annotated = True
 
                     else:
-                        label = "unlabeled"
+                        labels = "unlabeled"
 
-                    if label is not None:
+                    if labels is not None: # todo check below
                         if self.annotated_only and annotated or not self.annotated_only:
 
                             file_name = slide_name + "_" + str(global_x) + "_" + str(global_y) + "." + output_format
@@ -499,22 +579,23 @@ class WSIHandler:
                                 patch = cv2.resize(patch, (self.config["patch_size"], self.config["patch_size"]))
 
                             patch = Image.fromarray(patch)
-                            patch.save(os.path.join(self.output_path, label, file_name), format=output_format)
+                            for label in labels:
+                                patch.save(os.path.join(self.output_path, label, file_name), format=output_format)
 
-                            patch_dict.update(
-                                {
-                                    patch_nb: {
-                                        "slide_name": slide_name,
-                                        "patch_path": os.path.join(label, file_name),
-                                        "label": label,
-                                        "x_pos": global_x,
-                                        "y_pos": global_y,
-                                        "patch_size": patch_size_px_x,
-                                        "resized": self.config["calibration"]["resize"],
+                                patch_dict.update(
+                                    {
+                                        patch_nb: {
+                                            "slide_name": slide_name,
+                                            "patch_path": os.path.join(label, file_name),
+                                            "label": label,
+                                            "x_pos": global_x,
+                                            "y_pos": global_y,
+                                            "patch_size": patch_size_px_x,
+                                            "resized": self.config["calibration"]["resize"],
+                                        }
                                     }
-                                }
-                            )
-                            patch_nb += 1
+                                )
+                                patch_nb += 1
                     if stop_x:
                         break
                 if stop_y:
@@ -573,10 +654,10 @@ class WSIHandler:
                     ]
 
                     # Create mask from polygons
-                    tile_annotation_mask = np.zeros(shape=(tile_size, tile_size))
+                    tile_annotation_mask = np.zeros(shape=(tile_size, tile_size))  # todo copy changes to one more dim here
 
                     for polygon in tile_annotation_list:
-                        cv2.fillPoly(tile_annotation_mask, [np.array(polygon).astype(np.int32)], 1)
+                        cv2.fillPoly(tile_annotation_mask, [np.array(polygon).astype(np.int32)], 1)  # todo copy changes to one more dim here
 
                 stop_y = False
 
@@ -611,7 +692,7 @@ class WSIHandler:
                             patch_mask = tile_annotation_mask[
                                 patch_y: patch_y + patch_size, patch_x: patch_x + patch_size
                             ]
-                            label, label_percentage = self.check_for_label(label_dict, patch_mask)
+                            label, label_percentage = self.check_for_label(label_dict, patch_mask)  # todo check changes from above work here as well
                             if label is not None:
                                 if self.config["label_dict"][label]["annotated"]:
                                     annotated = True
@@ -827,7 +908,7 @@ class WSIHandler:
                 return 0
         else:
             try:
-                patch_dict = self.extract_patches(
+                patch_dict = self.extract_patches( # todo adapt to multilabel here as well
                     tile_dict,
                     level,
                     self.annotation_dict,

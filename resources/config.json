@@ -19,7 +19,7 @@
   "metadata_format": "json",
   "show_mode": false,
   "label_dict": {
-    "non_tumor": {"type": "==", "threshold": 0, "annotated": false},
+    "non_tumor": {"type": "==", "threshold": 1.0, "annotated": false},
     "Tumor": {"type": ">=", "threshold": 0.5, "annotated": true},
     "Necrosis": {"type": ">=", "threshold": 0.5, "annotated": true},
     "Stroma": {"type": ">=", "threshold": 0.5, "annotated": true}
