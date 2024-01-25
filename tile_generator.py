@@ -47,6 +47,7 @@ class WSIHandler:
         self.annotation_list = None
         self.annotation_dict = None
         self.config = self.load_config(config_path)
+        assert "save_annotated_only" in self.config.keys()
         self.annotated_only = self.config["save_annotated_only"]
         self.scanner = None
 
@@ -245,20 +246,20 @@ class WSIHandler:
             for col in range(cols):
 
                 tile = tissue_mask[
-                    row * tile_size: row * tile_size + tile_size, col * tile_size: col * tile_size + tile_size
-                ]
+                       row * tile_size: row * tile_size + tile_size, col * tile_size: col * tile_size + tile_size
+                       ]
                 tissue_coverage = np.count_nonzero(tile) / tile.size
                 annotated = False
 
                 if self.annotation_dict is not None:
                     if (
-                        np.count_nonzero(
-                            annotation_mask[
+                            np.count_nonzero(
+                                annotation_mask[
                                 row * tile_size: row * tile_size + tile_size,
                                 col * tile_size: col * tile_size + tile_size,
-                            ]
-                        )
-                        > 0
+                                ]
+                            )
+                            > 0
                     ):
                         annotated = True
 
@@ -368,9 +369,10 @@ class WSIHandler:
                     current_max = (label, percentage)
             return current_max[0]
 
-# todo check background removal still working (I don't think anything *broke* here, but I saw a number of white tiles - might be an "issue" with extract_calibrated_tiles, though)
+    # todo check background removal still working (I don't think anything *broke* here, but I saw a number of white tiles - might be an "issue" with extract_calibrated_tiles, though)
 
-    def check_for_label(self, label_dict, annotation_mask):  # todo refactor later as this is "legacy" code from parts of the tiling I did not need to touch - most likely it can be replaced with get_labels_with_enough_tissue_annotated
+    def check_for_label(self, label_dict,
+                        annotation_mask):  # todo refactor later as this is "legacy" code from parts of the tiling I did not need to touch - most likely it can be replaced with get_labels_with_enough_tissue_annotated
         if self.get_unique_nonzero_entries(annotation_mask).size == 1:
             label_id = self.get_unique_nonzero_entries(annotation_mask)[0]
         elif self.get_unique_nonzero_entries(annotation_mask).size > 1:
@@ -423,38 +425,29 @@ class WSIHandler:
 
         return labels_with_enough_tissue_including_non_tumor
 
-    def make_dirs(self, output_path, slide_name, label_dict, annotated):
-        try:
-            slide_path = os.path.join(output_path, slide_name)
-            if not os.path.exists(slide_path):
-                os.makedirs(slide_path)
-            if not annotated:
-                unlabeled_path = os.path.join(slide_path, "unlabeled")
-                if not os.path.exists(unlabeled_path):
-                    os.makedirs(unlabeled_path)
-            else:
-                for label in label_dict:
-                    sub_path = os.path.join(slide_path, label)
-                    if not os.path.exists(sub_path):
-                        os.makedirs(sub_path)
-                    if os.listdir(sub_path) and self.config["discard_preexistent_patches"]:
-                        for patch in os.listdir(sub_path):
-                            os.remove(os.path.join(sub_path, patch))
-            self.output_path = slide_path
-
-        except Exception as e:
-            self.print_and_log_slide_error(slide_name, e, "make_dirs")
+    def update_overlapping_annotations_file(self, slide_name, verbose):
+        with open(os.path.join(self.config["output_path"],
+                               "overlapping_annotations_present_in_slides.json"), "r") as file:
+            overlapping_annotations_present = json.load(file)
+        if not overlapping_annotations_present[slide_name]:
+            overlapping_annotations_present[slide_name] = True
+            with (open(os.path.join(self.config["output_path"],
+                                    "overlapping_annotations_present_in_slides.json"), "w")
+                  as file):
+                json.dump(overlapping_annotations_present, file, indent=4)
+            if verbose:
+                print(f"There are overlapping annotations in slide {slide_name}.")
 
     def extract_calibrated_patches(
-        self,
-        tile_dict,
-        level,
-        annotations,
-        label_dict,
-        overlap=0,
-        annotation_overlap=0,
-        slide_name=None,
-        output_format="png",
+            self,
+            tile_dict,
+            level,
+            annotations,
+            label_dict,
+            overlap=0,
+            annotation_overlap=0,
+            slide_name=None,
+            output_format="png",
     ):
 
         scaling_factor = int(self.slide.level_downsamples[level])
@@ -492,7 +485,7 @@ class WSIHandler:
                     for polygon in annotations
                 ]
 
-                for polygon in tile_annotation_list: # todo refactor into own function later - because fillpoly only works when poly in completely contained in tile - if not no annotation - so implement check to see if any of the points is contained in poly
+                for polygon in tile_annotation_list:  # todo refactor into own function later - because fillpoly only works when poly in completely contained in tile - if not no annotation - so implement check to see if any of the points is contained in poly
                     for point in polygon:
                         if point[0] < 0:
                             point[0] = 0.0
@@ -559,11 +552,15 @@ class WSIHandler:
 
                     if annotations is not None:
                         patch_mask = tile_annotation_mask[patch_y: patch_y + patch_size_px_y,
-                                     patch_x : patch_x + patch_size_px_x, :]
+                                     patch_x: patch_x + patch_size_px_x, :]
                         labels = self.get_labels_with_enough_tissue_annotated(label_dict, patch_mask)
                         if labels is not None:
+                            if len(labels) > 1:
+                                self.update_overlapping_annotations_file(
+                                    slide_name, verbose=self.config["overlapping_annotations_verbose"])
+
                             for label in labels:
-                                # this is done to ensure that non-tumor tissue (unannotated) is handled properly
+                                # this check is done to ensure that non-tumor tissue (unannotated) is handled properly
                                 if self.config["label_dict"][label]["annotated"]:
                                     annotated = True
 
@@ -603,17 +600,39 @@ class WSIHandler:
 
         return patch_dict
 
+    def make_dirs(self, output_path, slide_name, label_dict, annotated):
+        try:
+            slide_path = os.path.join(output_path, slide_name)
+            if not os.path.exists(slide_path):
+                os.makedirs(slide_path)
+            if not annotated:
+                unlabeled_path = os.path.join(slide_path, "unlabeled")
+                if not os.path.exists(unlabeled_path):
+                    os.makedirs(unlabeled_path)
+            else:
+                for label in label_dict:
+                    sub_path = os.path.join(slide_path, label)
+                    if not os.path.exists(sub_path):
+                        os.makedirs(sub_path)
+                    if os.listdir(sub_path) and self.config["discard_preexistent_patches"]:
+                        for patch in os.listdir(sub_path):
+                            os.remove(os.path.join(sub_path, patch))
+            self.output_path = slide_path
+
+        except Exception as e:
+            self.print_and_log_slide_error(slide_name, e, "make_dirs")
+
     def extract_patches(
-        self,
-        tile_dict,
-        level,
-        annotations,
-        label_dict,
-        overlap=0,
-        annotation_overlap=0,
-        patch_size=256,
-        slide_name=None,
-        output_format="png",
+            self,
+            tile_dict,
+            level,
+            annotations,
+            label_dict,
+            overlap=0,
+            annotation_overlap=0,
+            patch_size=256,
+            slide_name=None,
+            output_format="png",
     ):
         px_overlap = int(patch_size * overlap)  # todo check if can be removed
         patch_dict = {}
@@ -654,10 +673,12 @@ class WSIHandler:
                     ]
 
                     # Create mask from polygons
-                    tile_annotation_mask = np.zeros(shape=(tile_size, tile_size))  # todo copy changes from calibrated tiles handling to one more dim here
+                    tile_annotation_mask = np.zeros(shape=(
+                    tile_size, tile_size))  # todo copy changes from calibrated tiles handling to one more dim here
 
                     for polygon in tile_annotation_list:
-                        cv2.fillPoly(tile_annotation_mask, [np.array(polygon).astype(np.int32)], 1)  # todo copy changes from calibrated tiles handling to one more dim here
+                        cv2.fillPoly(tile_annotation_mask, [np.array(polygon).astype(np.int32)],
+                                     1)  # todo copy changes from calibrated tiles handling to one more dim here
 
                 stop_y = False
 
@@ -690,9 +711,10 @@ class WSIHandler:
                         annotated = False
                         if annotations is not None:
                             patch_mask = tile_annotation_mask[
-                                patch_y: patch_y + patch_size, patch_x: patch_x + patch_size
-                            ]
-                            label, label_percentage = self.check_for_label(label_dict, patch_mask)  # todo check changes from calibrated tiles work here as well - although I pulled the functionality apart so that the function in question is only used here
+                                         patch_y: patch_y + patch_size, patch_x: patch_x + patch_size
+                                         ]
+                            label, label_percentage = self.check_for_label(label_dict,
+                                                                           patch_mask)  # todo check changes from calibrated tiles work here as well - although I pulled the functionality apart so that the function in question is only used here
                             if label is not None:
                                 if self.config["label_dict"][label]["annotated"]:
                                     annotated = True
@@ -705,11 +727,12 @@ class WSIHandler:
                                 if slide_name is not None:
 
                                     file_name = (
-                                        slide_name + "_" + str(global_x) + "_" + str(global_y) + "." + output_format
+                                            slide_name + "_" + str(global_x) + "_" + str(global_y) + "." + output_format
                                     )
                                 else:
                                     file_name = (
-                                        str(patch_nb) + "_" + str(global_x) + "_" + str(global_y) + "." + output_format
+                                            str(patch_nb) + "_" + str(global_x) + "_" + str(
+                                        global_y) + "." + output_format
                                     )
 
                                 patch = Image.fromarray(patch)
@@ -779,7 +802,7 @@ class WSIHandler:
         self.scanner = "generic-tiff"
 
         assert self.slide.properties["tiff.ResolutionUnit"] in unit_dict.keys(), (
-            "Unknown unit " + self.slide.properties["tiff.ResolutionUnit"]
+                "Unknown unit " + self.slide.properties["tiff.ResolutionUnit"]
         )
 
         factor = unit_dict[self.slide.properties["tiff.ResolutionUnit"]]
@@ -826,7 +849,6 @@ class WSIHandler:
         assert self.scanner, "Not integrated scanner type, aborting"
 
     def process_slide(self, slide):
-
         slide_name = os.path.basename(slide)
         slide_name = os.path.splitext(slide_name)[0]
 
@@ -901,14 +923,14 @@ class WSIHandler:
                     overlap=self.config["overlap"],
                     annotation_overlap=self.config["annotation_overlap"],
                     slide_name=slide_name,
-                    output_format=self.config["output_format"],
+                    output_format=self.config["output_format"]
                 )
             except Exception as e:
                 self.print_and_log_slide_error(slide_name, e, "extract_calibrated_patches")
                 return 0
         else:
             try:
-                patch_dict = self.extract_patches( # todo adapt to multilabel here as well
+                patch_dict = self.extract_patches(  # todo adapt to multilabel here as well
                     tile_dict,
                     level,
                     self.annotation_dict,
@@ -957,6 +979,10 @@ class WSIHandler:
     def init(l):
         global lock
         lock = l
+
+    @staticmethod
+    def get_slide_name_from_slide_path(slide_path):
+        return os.path.splitext(os.path.basename(slide_path))[0]
 
     def slides2patches(self):
 
@@ -1008,6 +1034,14 @@ class WSIHandler:
 
         if not len(slide_list) == 0:
             slide_list = sorted(slide_list)
+
+            # writing this to file to work somewhat elegantly around multiprocessing without much restructuring of the
+            # existing code
+            with (open(os.path.join(self.config["output_path"], "overlapping_annotations_present_in_slides.json"), "w")
+                  as file):
+                json.dump(dict.fromkeys(list(map(self.get_slide_name_from_slide_path, slide_list)), False),
+                          file, indent=4)
+
             if _MULTIPROCESS:
                 available_threads = multiprocessing.cpu_count() - self.config["blocked_threads"]
                 pool = multiprocessing.Pool(processes=available_threads, initializer=self.init, initargs=(l,))
@@ -1022,8 +1056,7 @@ class WSIHandler:
             if len(annotated_slides) == 0:
                 for i in range(len(slide_list)):
                     slide = slide_list[i]
-                    slide_name = os.path.basename(slide)
-                    slide_name = os.path.splitext(slide_name)[0]
+                    slide_name = self.get_slide_name_from_slide_path(slide)
                     slide_dict.update({i: {"slide_name": slide_name,
                                            "slide_path": slide,
                                            }
@@ -1034,12 +1067,11 @@ class WSIHandler:
                 # Save label proportion per slide
                 labels = list(self.config["label_dict"].keys())
 
-                if len(labels) == 2:# todo test
+                if len(labels) == 2:  # todo test this still works/replace with just multilabel handling
 
                     for i in range(len(annotated_slides)):
                         slide = slide_list[i]
-                        slide_name = os.path.basename(slide)
-                        slide_name = os.path.splitext(slide_name)[0]
+                        slide_name = self.get_slide_name_from_slide_path(slide)
                         slide_path = os.path.join(self.config["output_path"], slide_name)
                         # Assume label 1 is tumor label
                         n_tumor = len(os.listdir(os.path.join(slide_path, labels[1])))
@@ -1060,10 +1092,12 @@ class WSIHandler:
                     self.output_path = self.config["output_path"]
                     self.export_dict(slide_dict, self.config["metadata_format"], "slide_information")
                 else:
+                    with (open(os.path.join(self.config["output_path"],
+                                            "overlapping_annotations_present_in_slides.json"), "r") as file):
+                        overlapping_annotations_present_in_slide = json.load(file)
                     for i in range(len(annotated_slides)):
                         slide = slide_list[i]
-                        slide_name = os.path.basename(slide)
-                        slide_name = os.path.splitext(slide_name)[0]
+                        slide_name = self.get_slide_name_from_slide_path(slide)
                         slide_path = os.path.join(self.config["output_path"], slide_name)
 
                         n_labeled_tiles = 0
@@ -1074,7 +1108,9 @@ class WSIHandler:
                             n_labeled_tiles += n_label
 
                         slide_dict_entry = {}
-                        slide_dict_entry.update({"slide_name": slide_name})
+                        slide_dict_entry.update({"slide_name": slide_name,
+                                                 "slide_contains_overlapping_annotations":
+                                                     overlapping_annotations_present_in_slide[slide_name]})
                         fracs = {}
                         for label, n_label in n_labels.items():
                             slide_dict_entry.update({label: n_label})
@@ -1085,7 +1121,7 @@ class WSIHandler:
                     self.output_path = self.config["output_path"]
                     self.export_dict(slide_dict, self.config["metadata_format"], "slide_information")
 
-# todo implement sanity checks (dict labels matching labels on annotations), print outs which labels have (not) been annotation-processed, etc
+            # todo implement sanity checks (dict labels matching labels on annotations), print outs which labels have (not) been annotation-processed, etc
             # Save used config file
             file = os.path.join(self.config["output_path"], "config.json")
             with open(file, "w") as json_file:
