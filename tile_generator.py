@@ -634,7 +634,6 @@ class WSIHandler:
             slide_name=None,
             output_format="png",
     ):
-        px_overlap = int(patch_size * overlap)  # todo check if can be removed
         patch_dict = {}
 
         scaling_factor = int(self.slide.level_downsamples[level])
@@ -1067,56 +1066,31 @@ class WSIHandler:
                 # Save label proportion per slide
                 labels = list(self.config["label_dict"].keys())
 
-                if len(labels) == 2:  # todo test this still works/replace with just multilabel handling
+                with (open(os.path.join(self.config["output_path"],
+                                        "overlapping_annotations_present_in_slides.json"), "r") as file):
+                    overlapping_annotations_present_in_slide = json.load(file)
+                for i in range(len(annotated_slides)):
+                    slide = slide_list[i]
+                    slide_name = self.get_slide_name_from_slide_path(slide)
+                    slide_path = os.path.join(self.config["output_path"], slide_name)
 
-                    for i in range(len(annotated_slides)):
-                        slide = slide_list[i]
-                        slide_name = self.get_slide_name_from_slide_path(slide)
-                        slide_path = os.path.join(self.config["output_path"], slide_name)
-                        # Assume label 1 is tumor label
-                        n_tumor = len(os.listdir(os.path.join(slide_path, labels[1])))
-                        n_other = len(os.listdir(os.path.join(slide_path, labels[0])))
-                        n_total = n_tumor + n_other
-                        frac = n_tumor / n_total * 100
-                        slide_dict.update(
-                            {
-                                i: {
-                                    "slide_name": slide_name,
-                                    labels[1]: n_tumor,
-                                    labels[0]: n_other,
-                                    "total": n_total,
-                                    "frac": frac,
-                                }
-                            }
-                        )
-                    self.output_path = self.config["output_path"]
-                    self.export_dict(slide_dict, self.config["metadata_format"], "slide_information")
-                else:
-                    with (open(os.path.join(self.config["output_path"],
-                                            "overlapping_annotations_present_in_slides.json"), "r") as file):
-                        overlapping_annotations_present_in_slide = json.load(file)
-                    for i in range(len(annotated_slides)):
-                        slide = slide_list[i]
-                        slide_name = self.get_slide_name_from_slide_path(slide)
-                        slide_path = os.path.join(self.config["output_path"], slide_name)
+                    n_labeled_tiles = 0
+                    n_labels = {}
+                    for label in labels:
+                        n_label = len(os.listdir(os.path.join(slide_path, label)))
+                        n_labels.update({label: n_label})
+                        n_labeled_tiles += n_label
 
-                        n_labeled_tiles = 0
-                        n_labels = {}
-                        for label in labels:
-                            n_label = len(os.listdir(os.path.join(slide_path, label)))
-                            n_labels.update({label: n_label})
-                            n_labeled_tiles += n_label
-
-                        slide_dict_entry = {}
-                        slide_dict_entry.update({"slide_name": slide_name,
-                                                 "slide_contains_overlapping_annotations":
-                                                     overlapping_annotations_present_in_slide[slide_name]})
-                        fracs = {}
-                        for label, n_label in n_labels.items():
-                            slide_dict_entry.update({label: n_label})
-                            fracs.update({label: n_label / n_labeled_tiles * 100})
-                        slide_dict_entry.update({"total": n_labeled_tiles, "frac": fracs})
-                        slide_dict.update({i: slide_dict_entry})
+                    slide_dict_entry = {}
+                    slide_dict_entry.update({"slide_name": slide_name,
+                                             "slide_contains_overlapping_annotations":
+                                                 overlapping_annotations_present_in_slide[slide_name]})
+                    fracs = {}
+                    for label, n_label in n_labels.items():
+                        slide_dict_entry.update({label: n_label})
+                        fracs.update({label: n_label / n_labeled_tiles * 100})
+                    slide_dict_entry.update({"total": n_labeled_tiles, "frac": fracs})
+                    slide_dict.update({i: slide_dict_entry})
 
                     self.output_path = self.config["output_path"]
                     self.export_dict(slide_dict, self.config["metadata_format"], "slide_information")
