@@ -175,7 +175,7 @@ class WSIHandler:
         image = np.array(self.slide.read_region((0, 0), level, dims))
 
         if show:
-            plt.imshow(image)
+            plt.imshow(image)  # todo remove: run export QT_QPA_PLATFORM=xcb in terminal before opening pycharm (same terminal) to work around a wayland issue
             plt.title("Slide image")
             plt.show()
 
@@ -188,7 +188,7 @@ class WSIHandler:
         else:
             image, level = self.get_img(show=show)
 
-        tissue_mask = tissue_detection.tissue_detection(image)
+        tissue_mask = tissue_detection.tissue_detection(image, remove_top_percentage=0)
 
         if show:
             plt.imshow(tissue_mask)
@@ -371,8 +371,7 @@ class WSIHandler:
 
     # todo check background removal still working (I don't think anything *broke* here, but I saw a number of white tiles - might be an "issue" with extract_calibrated_tiles, though)
 
-    def check_for_label(self, label_dict,
-                        annotation_mask):  # todo refactor later as this is "legacy" code from parts of the tiling I did not need to touch - most likely it can be replaced with get_labels_with_enough_tissue_annotated
+    def check_for_label(self, label_dict, annotation_mask):  # todo refactor later as this is "legacy" code from parts of the tiling I did not need to touch - most likely it can be replaced with get_labels_with_enough_tissue_annotated
         if self.get_unique_nonzero_entries(annotation_mask).size == 1:
             label_id = self.get_unique_nonzero_entries(annotation_mask)[0]
         elif self.get_unique_nonzero_entries(annotation_mask).size > 1:
