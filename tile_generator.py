@@ -263,7 +263,8 @@ class WSIHandler:
                     ):
                         annotated = True
 
-                if tissue_coverage >= min_coverage or annotated:
+                if (tissue_coverage >= min_coverage or
+                        (self.config["keep_annotated_tiles_despite_too_little_tissue_coverage"] and annotated)):
                     relevant_tiles_dict.update(
                         {
                             tile_nb: {
@@ -1009,7 +1010,7 @@ class WSIHandler:
             else missing_annotations.append(os.path.splitext(os.path.basename(name))[0])
             for name in slide_list
         ]
-        annotated_slides = list(filter(None.__ne__, annotated_slides))
+        annotated_slides = list(filter(lambda slide: True if slide is not None else False, annotated_slides))
 
         print("###############################################")
         print("Found", len(annotated_slides), "annotated slides")

@@ -1,5 +1,6 @@
 {"use_tissue_detection": true,
   "tissue_coverage": 0.9,
+  "keep_annotated_tiles_despite_too_little_tissue_coverage": false,
   "processing_level": 5,
   "blocked_threads": 4,
   "patches_per_tile": 8,
@@ -23,5 +24,6 @@
     "Tumor": {"type": ">=", "threshold": 0.5, "annotated": true},
     "Necrosis": {"type": ">=", "threshold": 0.5, "annotated": true},
     "Stroma": {"type": ">=", "threshold": 0.5, "annotated": true}
-  }
+  },
+  "overlapping_annotations_verbose": true
 }
