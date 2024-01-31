@@ -124,21 +124,26 @@ class WSIHandler:
 
         return processing_level
 
-    @staticmethod
-    def load_annotation(annotation_path):
+    def load_annotation(self, annotation_path):
         annotation_dict = {}
         file_format = Path(annotation_path).suffix
 
-        # CuPath exports
+        # QuPath exports
         if file_format == ".geojson" or file_format == ".txt":
             with open(annotation_path) as annotation_file:
                 annotations = json.load(annotation_file)
 
             for polygon_nb in range(len(annotations["features"])):
                 if annotations["features"][polygon_nb]["geometry"]["type"] == "Polygon":
-                    annotation_dict.update({polygon_nb: {
-                        "coordinates": annotations["features"][polygon_nb]["geometry"]["coordinates"][0],
-                        "tissue_type": annotations["features"][polygon_nb]["properties"]["classification"]["name"]}})
+                    if annotations["features"][polygon_nb]["properties"]["classification"]["name"] in self.config["label_dict"].keys():
+                        annotation_dict.update({polygon_nb: {
+                            "coordinates": annotations["features"][polygon_nb]["geometry"]["coordinates"][0],
+                            "tissue_type": annotations["features"][polygon_nb]["properties"]["classification"]["name"]}})
+                    else:
+                        warnings.warn(f'Unknown annotation type in file {annotation_file.name}: The annotation label '
+                                      f'"{annotations["features"][polygon_nb]["properties"]["classification"]["name"]}"'
+                                      f' is not part of the provided label dictionary '
+                                      f'(keys: {list(self.config["label_dict"].keys())}. Skipping.')
                 else:
                     warnings.warn(f'Not implemented warning in file {annotation_file.name}: The handling of the QuPath '
                                   f'annotation type {annotations["features"][polygon_nb]["geometry"]["type"]} '
@@ -175,7 +180,9 @@ class WSIHandler:
         image = np.array(self.slide.read_region((0, 0), level, dims))
 
         if show:
-            plt.imshow(image)  # todo remove: run export QT_QPA_PLATFORM=xcb in terminal before opening pycharm (same terminal) to work around a wayland issue
+            # Katja: fix for Wayland issue on my Ubuntu:
+            # run 'export QT_QPA_PLATFORM=xcb' before opening pycharm (in the same terminal)
+            plt.imshow(image)
             plt.title("Slide image")
             plt.show()
 
@@ -364,13 +371,11 @@ class WSIHandler:
         elif len(labels_over_percentage_threshold) == 1:
             return labels_over_percentage_threshold[0][0]
         else:
-            current_max = (-1, 0)  # todo refactor to allow for more than one label passing the threshold cont here
+            current_max = (-1, 0)
             for (label, percentage) in labels_over_percentage_threshold:
                 if percentage > current_max[1]:
                     current_max = (label, percentage)
             return current_max[0]
-
-    # todo check background removal still working (I don't think anything *broke* here, but I saw a number of white tiles - might be an "issue" with extract_calibrated_tiles, though)
 
     def check_for_label(self, label_dict, annotation_mask):  # todo refactor later as this is "legacy" code from parts of the tiling I did not need to touch - most likely it can be replaced with get_labels_with_enough_tissue_annotated
         if self.get_unique_nonzero_entries(annotation_mask).size == 1:
@@ -438,6 +443,22 @@ class WSIHandler:
             if verbose:
                 print(f"There are overlapping annotations in slide {slide_name}.")
 
+    @staticmethod
+    def normalize_to_tile_size_px(point, tile_size_px):
+        if point < 0:
+            return 0
+        elif point >= tile_size_px:
+            return tile_size_px - 1.0
+        else:
+            return point
+
+    def translate_world_coordinates_to_tile_coordinates(self, point, tile_x, tile_y, tile_size_px):
+        # the shrinkage of the coordinates to tile size is necessary as cv2.fillPoly only works if the annotation is
+        # completely within the tile, so I set any points larger than the tile coordinates to the closest (valid)
+        # tile coordinates
+        return [self.normalize_to_tile_size_px(point[0] - tile_x, tile_size_px),
+                self.normalize_to_tile_size_px(point[1] - tile_y, tile_size_px)]
+
     def extract_calibrated_patches(
             self,
             tile_dict,
@@ -481,20 +502,8 @@ class WSIHandler:
             if annotations is not None:
                 # Translate from world coordinates to tile coordinates
                 tile_annotation_list = [
-                    [[point[0] - tile_x, point[1] - tile_y] for point in annotations[polygon]["coordinates"]]
-                    for polygon in annotations
-                ]
-
-                for polygon in tile_annotation_list:  # todo refactor into own function later - because fillpoly only works when poly in completely contained in tile - if not no annotation - so implement check to see if any of the points is contained in poly
-                    for point in polygon:
-                        if point[0] < 0:
-                            point[0] = 0.0
-                        elif point[0] >= tile_size_px:
-                            point[0] = tile_size_px - 1.0
-                        if point[1] < 0:
-                            point[1] = 0.0
-                        elif point[1] >= tile_size_px:
-                            point[1] = tile_size_px - 1.0
+                    [self.translate_world_coordinates_to_tile_coordinates(point, tile_x, tile_y, tile_size_px)
+                     for point in annotations[polygon]["coordinates"]] for polygon in annotations]
 
                 tile_annotation_list = list(zip(tile_annotation_list, [annotations[polygon]["tissue_type"]
                                                                        for polygon in annotations]))
@@ -504,14 +513,14 @@ class WSIHandler:
 
                 annotated_tissue_types = {}
                 tissue_type_number = 1
-                for key, value in label_dict.items():
-                    if value["annotated"]:
-                        annotated_tissue_types.update({key: tissue_type_number})
+                for tissue_type, tissue_details in label_dict.items():
+                    if tissue_details["annotated"]:
+                        annotated_tissue_types.update({tissue_type: tissue_type_number})
                         tissue_type_number += 1
 
                 for polygon in tile_annotation_list:
                     # note: the casting to a contiguous array is due to OpenCV requiring C-order (row major) for
-                    # implementation purposes, compare here the answer by vvolhejn here
+                    # implementation purposes, compare the answer by vvolhejn here
                     # https://stackoverflow.com/questions/23830618/python-opencv-typeerror-layout-of-the-output-array-incompatible-with-cvmat
                     # basically: many (all?) copy operations in numpy do this, ascontiguousarray is one of the more
                     # verbose ones
@@ -1095,7 +1104,6 @@ class WSIHandler:
                     self.output_path = self.config["output_path"]
                     self.export_dict(slide_dict, self.config["metadata_format"], "slide_information")
 
-            # todo implement sanity checks (dict labels matching labels on annotations), print outs which labels have (not) been annotation-processed, etc
             # Save used config file
             file = os.path.join(self.config["output_path"], "config.json")
             with open(file, "w") as json_file:
