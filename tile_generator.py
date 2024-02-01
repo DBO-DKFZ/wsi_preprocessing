@@ -676,17 +676,43 @@ class WSIHandler:
                 if annotations is not None:
                     # Translate from world coordinates to tile coordinates
                     tile_annotation_list = [
-                        [[point[0] - tile_x, point[1] - tile_y] for point in annotations[polygon]["coordinates"]]
-                        for polygon in annotations
-                    ]
+                        [self.translate_world_coordinates_to_tile_coordinates(point, tile_x, tile_y, tile_size)
+                         for point in annotations[polygon]["coordinates"]] for polygon in annotations]
+
+                    tile_annotation_list = list(zip(tile_annotation_list, [annotations[polygon]["tissue_type"]
+                                                                           for polygon in annotations]))
+
+                    #     [
+                    #     [[point[0] - tile_x, point[1] - tile_y] for point in annotations[polygon]["coordinates"]]
+                    #     for polygon in annotations
+                    # ] todo up for removal
 
                     # Create mask from polygons
-                    tile_annotation_mask = np.zeros(shape=(
-                    tile_size, tile_size))  # todo copy changes from calibrated tiles handling to one more dim here
+                    tile_annotation_mask = np.zeros(shape=(tile_size, tile_size, len(self.config["label_dict"])))
+                    #     np.zeros(shape=(
+                    # tile_size, tile_size))  # todo up for removal
+
+                    annotated_tissue_types = {}
+                    tissue_type_number = 1
+                    for tissue_type, tissue_details in label_dict.items():
+                        if tissue_details["annotated"]:
+                            annotated_tissue_types.update({tissue_type: tissue_type_number})
+                            tissue_type_number += 1
 
                     for polygon in tile_annotation_list:
-                        cv2.fillPoly(tile_annotation_mask, [np.array(polygon).astype(np.int32)],
-                                     1)  # todo copy changes from calibrated tiles handling to one more dim here
+                        # note: the casting to a contiguous array is due to OpenCV requiring C-order (row major) for
+                        # implementation purposes, compare the answer by vvolhejn here
+                        # https://stackoverflow.com/questions/23830618/python-opencv-typeerror-layout-of-the-output-array-incompatible-with-cvmat
+                        # basically: many (all?) copy operations in numpy do this, ascontiguousarray is one of the more
+                        # verbose ones
+                        tile_annotation_mask[:, :, annotated_tissue_types[polygon[1]]] = (
+                            cv2.fillPoly(np.ascontiguousarray(
+                                tile_annotation_mask[:, :, annotated_tissue_types[polygon[1]]]),
+                                [np.array(polygon[0]).astype(np.int32)], annotated_tissue_types[polygon[1]]))
+
+                    # for polygon in tile_annotation_list:
+                    #     cv2.fillPoly(tile_annotation_mask, [np.array(polygon).astype(np.int32)],
+                    #                  1)  # todo up for removal
 
                 stop_y = False
 
@@ -721,16 +747,31 @@ class WSIHandler:
                             patch_mask = tile_annotation_mask[
                                          patch_y: patch_y + patch_size, patch_x: patch_x + patch_size
                                          ]
-                            label, label_percentage = self.check_for_label(label_dict,
-                                                                           patch_mask)  # todo check changes from calibrated tiles work here as well - although I pulled the functionality apart so that the function in question is only used here
-                            if label is not None:
-                                if self.config["label_dict"][label]["annotated"]:
-                                    annotated = True
+
+                            labels = self.get_labels_with_enough_tissue_annotated(label_dict, patch_mask)
+                            if labels is not None:
+                                if len(labels) > 1:
+                                    self.update_overlapping_annotations_file(
+                                        slide_name, verbose=self.config["overlapping_annotations_verbose"])
+
+                                for label in labels:
+                                    # this check is done to ensure that non-tumor tissue (unannotated) is handled properly
+                                    if self.config["label_dict"][label]["annotated"]:
+                                        annotated = True
+                            # label, label_percentage = self.check_for_label(label_dict,
+                            #                                                patch_mask)
+                            # if label is not None:
+                            #     if self.config["label_dict"][label]["annotated"]:
+                            #         annotated = True todo up for removal
 
                         else:
-                            label = "unlabeled"
+                            labels = "unlabeled"
 
-                        if label is not None:
+                        if labels is not None:
+                        # else:
+                        #     label = "unlabeled"
+                        #
+                        # if label is not None: todo up for removal
                             if self.annotated_only and annotated or not self.annotated_only:
                                 if slide_name is not None:
 
@@ -739,27 +780,51 @@ class WSIHandler:
                                     )
                                 else:
                                     file_name = (
-                                            str(patch_nb) + "_" + str(global_x) + "_" + str(
-                                        global_y) + "." + output_format
+                                            str(patch_nb) + "_" + str(global_x) + "_" + str(global_y) + "." +
+                                            output_format
                                     )
 
                                 patch = Image.fromarray(patch)
-                                patch.save(os.path.join(self.output_path, label, file_name), format=output_format)
 
-                                patch_dict.update(
-                                    {
-                                        patch_nb: {
-                                            "slide_name": slide_name,
-                                            "patch_path": os.path.join(label, file_name),
-                                            "label": label,
-                                            "tumor_coverage": label_percentage,
-                                            "x_pos": global_x,
-                                            "y_pos": global_y,
-                                            "patch_size": patch_size,
+                                for label in labels:
+                                    patch.save(os.path.join(self.output_path, label, file_name), format=output_format)
+
+                                    def get_label_id(label, label_dict):
+                                        for i, k_v in enumerate(label_dict.items()):
+                                            if k_v[0] == label:
+                                                return i
+                                    #label_id = get_label_id(label, self.config["label_dict"])
+                                    patch_dict.update(
+                                        {
+                                            patch_nb: {
+                                                "slide_name": slide_name,
+                                                "patch_path": os.path.join(label, file_name),
+                                                "label": label,
+                                                #"label_coverage": (np.count_nonzero(tile_annotation_mask[:, :, label_id] == label_id) /
+                                          #tile_annotation_mask[:, :, label_id].size),
+                                                "x_pos": global_x,
+                                                "y_pos": global_y,
+                                                "patch_size": patch_size,
+                                            }
                                         }
-                                    }
-                                )
-                                patch_nb += 1
+                                    )
+
+                                # patch.save(os.path.join(self.output_path, label, file_name), format=output_format)
+                                #
+                                # patch_dict.update(
+                                #     {
+                                #         patch_nb: {
+                                #             "slide_name": slide_name,
+                                #             "patch_path": os.path.join(label, file_name),
+                                #             "label": label,
+                                #             "tumor_coverage": label_percentage,
+                                #             "x_pos": global_x,
+                                #             "y_pos": global_y,
+                                #             "patch_size": patch_size,
+                                #         }
+                                #     }
+                                # )
+                                    patch_nb += 1
                         if stop_x:
                             break
                     if stop_y:
