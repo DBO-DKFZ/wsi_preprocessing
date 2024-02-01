@@ -1,5 +1,5 @@
 {"use_tissue_detection": true,
-  "tissue_coverage": 0.9,
+  "tissue_coverage": 0.7,
   "keep_annotated_tiles_despite_too_little_tissue_coverage": false,
   "processing_level": 5,
   "blocked_threads": 4,

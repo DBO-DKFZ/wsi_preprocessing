@@ -1,9 +1,9 @@
 import os
-from pathlib import Path
 from argparse import ArgumentParser
 import json
 
 script_dir = os.path.dirname(os.path.realpath(__file__))
+
 
 def main(config_path):
     with open(config_path) as json_file:

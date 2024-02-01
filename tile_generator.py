@@ -28,12 +28,16 @@ try:
 except Exception as e:
     pass
 
+# noinspection PyPep8
 import openslide
 
 # Custom
+# noinspection PyPep8
 import tissue_detection
 
 _MULTIPROCESS = True
+
+global lock
 
 
 class WSIHandler:
@@ -135,8 +139,8 @@ class WSIHandler:
 
             for polygon_nb in range(len(annotations["features"])):
                 if annotations["features"][polygon_nb]["geometry"]["type"] == "Polygon":
-                    if annotations["features"][polygon_nb]["properties"]["classification"]["name"] in self.config[
-                        "label_dict"].keys():
+                    if (annotations["features"][polygon_nb]["properties"]["classification"]["name"] in
+                            self.config["label_dict"].keys()):
                         annotation_dict.update({polygon_nb: {
                             "coordinates": annotations["features"][polygon_nb]["geometry"]["coordinates"][0],
                             "tissue_type": annotations["features"][polygon_nb]["properties"]["classification"][
@@ -261,15 +265,8 @@ class WSIHandler:
                 annotated = False
 
                 if self.annotation_dict is not None:
-                    if (
-                            np.count_nonzero(
-                                annotation_mask[
-                                row * tile_size: row * tile_size + tile_size,
-                                col * tile_size: col * tile_size + tile_size,
-                                ]
-                            )
-                            > 0
-                    ):
+                    if (np.count_nonzero(annotation_mask[row * tile_size: row * tile_size + tile_size,
+                                         col * tile_size: col * tile_size + tile_size, ]) > 0):
                         annotated = True
 
                 if (tissue_coverage >= min_coverage or
@@ -821,8 +818,6 @@ class WSIHandler:
 
     def init_patch_calibration(self):
 
-        properties = list(self.slide.properties)
-
         # check scanner type
         if self.slide.properties["openslide.vendor"] == "aperio":
             self.init_aperio()
@@ -1018,7 +1013,7 @@ class WSIHandler:
         if not os.path.exists(self.config["output_path"]):
             os.makedirs(self.config["output_path"])
 
-        with open(os.path.join(self.config["output_path"], "error_log.txt"), "w") as f:
+        with open(os.path.join(self.config["output_path"], "error_log.txt"), "w"):
             pass
 
         if not len(slide_list) == 0:
