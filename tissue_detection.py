@@ -1,17 +1,18 @@
 import numpy as np
-import matplotlib.pyplot as plt
-import copy
 import cv2
 
 
-def tissue_detection(img):
+def tissue_detection(img, remove_top_percentage=0.2):
+
+    assert 0 <= remove_top_percentage < 1, (f"remove_top_percentage needs to be in [0, 1). You passed "
+                                            f"{remove_top_percentage}.")
 
     kernel_size = 3
 
     # remove alpha channel
     img = img[:, :, 0:3]
 
-    top_border = int(len(img)/5)
+    top_border = int(len(img)*remove_top_percentage)
     # hack for removing border artifacts
     img[0:top_border, :, :] = [0, 0, 0]
 
@@ -34,6 +35,6 @@ def tissue_detection(img):
     # apply dilation to image to close spots inside mask regions
     kernel = np.ones(shape=(kernel_size, kernel_size))
     tissue_mask = cv2.dilate(threshold_image, kernel, iterations=1)
-    #tissue_mask = cv2.erode(tissue_mask, kernel)
+    # tissue_mask = cv2.erode(tissue_mask, kernel)
 
     return tissue_mask
