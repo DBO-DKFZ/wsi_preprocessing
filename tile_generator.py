@@ -578,9 +578,8 @@ class WSIHandler:
                     sub_path = os.path.join(slide_path, label)
                     if not os.path.exists(sub_path):
                         os.makedirs(sub_path)
-                    if os.listdir(sub_path) and self.config["discard_preexistent_patches"]:
-                        for patch in os.listdir(sub_path):
-                            os.remove(os.path.join(sub_path, patch))
+                    for patch in os.listdir(sub_path):
+                        os.remove(os.path.join(sub_path, patch))
             self.output_path = slide_path
 
         except Exception as e:

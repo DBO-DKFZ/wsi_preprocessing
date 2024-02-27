@@ -15,7 +15,6 @@
   "output_path": "/home/katja/Data/svs-WSIs/tiles/",
   "skip_unlabeled_slides": false,
   "save_annotated_only": false,
-  "discard_preexistent_patches": true,
   "output_format": "jpeg",
   "metadata_format": "json",
   "show_mode": false,
